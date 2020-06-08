@@ -31,7 +31,7 @@
 #include "nvtx3/nvToolsExt.h"
 
 /* Package and library details required for plugin_init */
-#define PACKAGE "nvinfer"
+#define PACKAGE "nvinferonnx"
 #define VERSION "1.0"
 #define LICENSE "Proprietary"
 #define DESCRIPTION "NVIDIA DeepStreamSDK TensorRT plugin"
