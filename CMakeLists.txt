@@ -32,10 +32,13 @@ target_link_libraries(
         -lgstreamer-1.0
         -lgobject-2.0
         -lglib-2.0
+        -L/mnt/hdd/CLionProjects/debugInfer/libs/nvdsinfer
 )
 include_directories(
         ${CUDA_INCLUDE_DIRS}
         /opt/nvidia/deepstream/deepstream-5.0/sources/includes
         /usr/include/glib-2.0
         /usr/include/gstreamer-1.0
+        /mnt/hdd/CLionProjects/debugInfer/includes
+        /mnt/hdd/CLionProjects/debugInfer/libs/nvdsinfer
 )
