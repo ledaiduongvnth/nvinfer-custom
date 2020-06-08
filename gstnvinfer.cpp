@@ -2084,10 +2084,10 @@ gst_nvinfer_output_loop (gpointer data)
 static gboolean
 nvinfer_plugin_init (GstPlugin * plugin)
 {
-  GST_DEBUG_CATEGORY_INIT (gst_nvinfer_debug, "nvinfer", 0, "nvinfer plugin");
+  GST_DEBUG_CATEGORY_INIT (gst_nvinfer_debug, "nvinferonnx", 0, "nvinfer plugin for onnx model");
   gst_debug_category_set_threshold (gst_nvinfer_debug, GST_LEVEL_INFO);
 
-  return gst_element_register (plugin, "nvinfer", GST_RANK_PRIMARY,
+  return gst_element_register (plugin, "nvinferonnx", GST_RANK_PRIMARY,
       GST_TYPE_NVINFER);
 }
 
