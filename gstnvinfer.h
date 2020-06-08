@@ -41,18 +41,18 @@
 
 G_BEGIN_DECLS
 /* Standard GStreamer boilerplate */
-typedef struct _GstNvInfer GstNvInfer;
-typedef struct _GstNvInferClass GstNvInferClass;
-typedef struct _GstNvInferImpl GstNvInferImpl;
+typedef struct _GstNvInferOnnx GstNvInferOnnx;
+typedef struct _GstNvInferOnnxClass GstNvInferOnnxClass;
+typedef struct _GstNvInferOnnxImpl GstNvInferOnnxImpl;
 
 /* Standard GStreamer boilerplate */
 #define GST_TYPE_NVINFER (gst_nvinfer_get_type())
-#define GST_NVINFER(obj) (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_NVINFER,GstNvInfer))
-#define GST_NVINFER_CLASS(klass) (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_NVINFER,GstNvInferClass))
-#define GST_NVINFER_GET_CLASS(obj) (G_TYPE_INSTANCE_GET_CLASS((obj), GST_TYPE_NVINFER, GstNvInferClass))
+#define GST_NVINFER(obj) (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_NVINFER,GstNvInferOnnx))
+#define GST_NVINFER_CLASS(klass) (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_NVINFER,GstNvInferOnnxClass))
+#define GST_NVINFER_GET_CLASS(obj) (G_TYPE_INSTANCE_GET_CLASS((obj), GST_TYPE_NVINFER, GstNvInferOnnxClass))
 #define GST_IS_NVINFER(obj) (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_NVINFER))
 #define GST_IS_NVINFER_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_NVINFER))
-#define GST_NVINFER_CAST(obj)  ((GstNvInfer *)(obj))
+#define GST_NVINFER_CAST(obj)  ((GstNvInferOnnx *)(obj))
 
 /**
  * Enum for all GObject properties for the element.
@@ -98,7 +98,7 @@ typedef struct
   guint detectionMinHeight;
   guint detectionMaxWidth;
   guint detectionMaxHeight;
-} GstNvInferDetectionFilterParams;
+} GstNvInferOnnxDetectionFilterParams;
 
 /**
  * Holds the bounding box coloring information for one class;
@@ -110,7 +110,7 @@ typedef struct
 
   gboolean have_bg_color;
   NvOSD_ColorParams bg_color;
-} GstNvInferColorParams;
+} GstNvInferOnnxColorParams;
 
 /** Holds the cached information of an object. */
 typedef struct {
@@ -118,13 +118,13 @@ typedef struct {
   std::vector<NvDsInferAttribute> attributes;
   /** Cached string label. */
   std::string label;
-} GstNvInferObjectInfo;
+} GstNvInferOnnxObjectInfo;
 
 /**
  * Holds the inference information/history for one object based on it's
  * tracking id.
  */
-typedef struct _GstNvInferObjectHistory
+typedef struct _GstNvInferOnnxObjectHistory
 {
   /** Boolean indicating if the object is already being inferred on. */
   gboolean under_inference;
@@ -137,11 +137,11 @@ typedef struct _GstNvInferObjectHistory
    * keeping the size of the map in check. */
   gulong last_accessed_frame_num;
   /** Cached object information. */
-  GstNvInferObjectInfo cached_info;
-} GstNvInferObjectHistory;
+  GstNvInferOnnxObjectInfo cached_info;
+} GstNvInferOnnxObjectHistory;
 
 /** Map type for maintaing inference history for objects based on their tracking ids.*/
-typedef std::unordered_map<guint64, std::shared_ptr<GstNvInferObjectHistory>> GstNvInferObjectHistoryMap;
+typedef std::unordered_map<guint64, std::shared_ptr<GstNvInferOnnxObjectHistory>> GstNvInferOnnxObjectHistoryMap;
 
 /**
  * Holds source-specific information.
@@ -149,17 +149,17 @@ typedef std::unordered_map<guint64, std::shared_ptr<GstNvInferObjectHistory>> Gs
 typedef struct
 {
   /** Map of object tracking ID and the object infer history. */
-  GstNvInferObjectHistoryMap object_history_map;
+  GstNvInferOnnxObjectHistoryMap object_history_map;
   /** Frame number of the buffer when the history map was last cleaned up. */
   gulong last_cleanup_frame_num;
   /** Frame number of the frame which . */
   gulong last_seen_frame_num;
-} GstNvInferSourceInfo;
+} GstNvInferOnnxSourceInfo;
 
 /**
- * GstNvInfer element structure.
+ * GstNvInferOnnx element structure.
  */
-struct _GstNvInfer
+struct _GstNvInferOnnx
 {
   /** Should be the first member when extending from GstBaseTransform. */
   GstBaseTransform base_trans;
@@ -222,10 +222,10 @@ struct _GstNvInfer
   gboolean maintain_aspect_ratio;
 
   /** Vector for per-class detection filtering parameters. */
-  std::vector<GstNvInferDetectionFilterParams> *perClassDetectionFilterParams;
+  std::vector<GstNvInferOnnxDetectionFilterParams> *perClassDetectionFilterParams;
 
   /** Vector for per-class color parameters. */
-  std::vector<GstNvInferColorParams> *perClassColorParams;
+  std::vector<GstNvInferOnnxColorParams> *perClassColorParams;
 
   /** Batch interval for full-frame processing. */
   guint interval;
@@ -246,7 +246,7 @@ struct _GstNvInfer
   std::set<uint> *filter_out_class_ids;
 
   /** Per source information. */
-  std::unordered_map<gint, GstNvInferSourceInfo> *source_info;
+  std::unordered_map<gint, GstNvInferOnnxSourceInfo> *source_info;
   gulong last_map_cleanup_frame_num;
 
   /** Current batch number of the input batch. */
@@ -299,11 +299,11 @@ struct _GstNvInfer
   /** NVTX Domain. */
   nvtxDomainHandle_t nvtx_domain;
 
-  GstNvInferImpl *impl;
+  GstNvInferOnnxImpl *impl;
 };
 
 /* GStreamer boilerplate. */
-struct _GstNvInferClass {
+struct _GstNvInferOnnxClass {
   GstBaseTransformClass parent_class;
 
   /** Signals */
@@ -311,7 +311,7 @@ struct _GstNvInferClass {
     * err: int, error result, type NvDsInferStatus.
     * cfg_file: update cfg file.
     */
-  void (*model_updated) (GstNvInfer *, gint err, const gchar *cfg_file);
+  void (*model_updated) (GstNvInferOnnx *, gint err, const gchar *cfg_file);
 };
 
 GType gst_nvinfer_get_type (void);

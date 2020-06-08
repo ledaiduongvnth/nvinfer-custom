@@ -133,7 +133,7 @@
 #define CONFIG_GROUP_INFER_CLASS_ATTRS_BG_COLOR "bg-color"
 #define CONFIG_GROUP_INFER_CLASS_ATTRS_NMS_IOU_THRESHOLD "nms-iou-threshold"
 
-gboolean gst_nvinfer_parse_config_file (GstNvInfer *nvinfer,
+gboolean gst_nvinfer_parse_config_file (GstNvInferOnnx *nvinfer,
         NvDsInferContextInitParams *init_params, const gchar * cfg_file_path);
 
 gboolean gst_nvinfer_parse_context_params (NvDsInferContextInitParams *params,

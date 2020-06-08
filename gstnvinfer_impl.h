@@ -31,7 +31,7 @@
 #include "nvtx3/nvToolsExt.h"
 
 G_BEGIN_DECLS
-typedef struct _GstNvInfer GstNvInfer;
+typedef struct _GstNvInferOnnx GstNvInferOnnx;
 
 void gst_nvinfer_logger(NvDsInferContextHandle handle, unsigned int unique_id,
     NvDsInferLogLevel log_level, const char* log_message, void* user_ctx);
@@ -41,7 +41,7 @@ G_END_DECLS
 using NvDsInferContextInitParamsPtr = std::unique_ptr<NvDsInferContextInitParams>;
 using NvDsInferContextPtr = std::shared_ptr<INvDsInferContext>;
 
-typedef struct _GstNvInferObjectHistory GstNvInferObjectHistory;
+typedef struct _GstNvInferOnnxObjectHistory GstNvInferOnnxObjectHistory;
 
 /**
  * Holds info about one frame in a batch for inferencing.
@@ -71,19 +71,19 @@ typedef struct {
   gpointer converted_frame_ptr = nullptr;
   /** Pointer to the structure holding inference history for the object. Should
    * be NULL when inferencing on frames. */
-  std::weak_ptr<GstNvInferObjectHistory> history;
+  std::weak_ptr<GstNvInferOnnxObjectHistory> history;
 
-} GstNvInferFrame;
+} GstNvInferOnnxFrame;
 
-using GstNvInferObjHistory_MetaPair =
-    std::pair<std::weak_ptr<GstNvInferObjectHistory>, NvDsObjectMeta *>;
+using GstNvInferOnnxObjHistory_MetaPair =
+    std::pair<std::weak_ptr<GstNvInferOnnxObjectHistory>, NvDsObjectMeta *>;
 
 /**
  * Holds information about the batch of frames to be inferred.
  */
 typedef struct {
   /** Vector of frames in the batch. */
-  std::vector<GstNvInferFrame> frames;
+  std::vector<GstNvInferOnnxFrame> frames;
   /** Pointer to the input GstBuffer. */
   GstBuffer *inbuf = nullptr;
   /** Batch number of the input batch. */
@@ -103,8 +103,8 @@ typedef struct {
 
   /** List of objects not inferred on in the current batch but pending
    * attachment of lastest available classification metadata. */
-  std::vector <GstNvInferObjHistory_MetaPair> objs_pending_meta_attach;
-} GstNvInferBatch;
+  std::vector <GstNvInferOnnxObjHistory_MetaPair> objs_pending_meta_attach;
+} GstNvInferOnnxBatch;
 
 
 /**
@@ -113,7 +113,7 @@ typedef struct {
  * when the tensor output is flowed along with buffers as metadata or when the
  * segmentation output containing pointer to the NvDsInferContext allocated
  * memory is attached to buffers as metadata. Whenever the last ref on the buffer
- * is dropped, the callback to free the GstMiniObject-inherited GstNvInferTensorOutputObject
+ * is dropped, the callback to free the GstMiniObject-inherited GstNvInferOnnxTensorOutputObject
  * is called and the batch_output can be released back to the NvDsInferContext.
  */
 typedef struct
@@ -128,7 +128,7 @@ typedef struct
    * sent as meta data. This batch output will be released back to the
    * NvDsInferContext when the last ref on the mini_object is removed. */
   NvDsInferContextBatchOutput batch_output;
-} GstNvInferTensorOutputObject;
+} GstNvInferOnnxTensorOutputObject;
 
 namespace gstnvinfer {
 
@@ -203,7 +203,7 @@ public:
   using ContextReplacementPtr =
       std::unique_ptr<std::tuple<NvDsInferContextPtr, NvDsInferContextInitParamsPtr, std::string>>;
 
-  DsNvInferImpl (GstNvInfer *infer);
+  DsNvInferImpl (GstNvInferOnnx *infer);
   ~DsNvInferImpl ();
   /* Start the model load thread. */
   NvDsInferStatus start ();
@@ -262,7 +262,7 @@ private:
       NvDsInferContextPtr ctx, NvDsInferContextInitParamsPtr params,
       const std::string &path);
 
-  GstNvInfer *m_GstInfer = nullptr;
+  GstNvInferOnnx *m_GstInfer = nullptr;
   /** Updating model thread. */
   std::unique_ptr<ModelLoadThread> m_ModelLoadThread;
   ContextReplacementPtr m_NextContextReplacement;

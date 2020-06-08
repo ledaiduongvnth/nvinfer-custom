@@ -103,7 +103,7 @@ guint gst_nvinfer_signals[LAST_SIGNAL] = { 0 };
 
 /* Define our element type. Standard GObject/GStreamer boilerplate stuff */
 #define gst_nvinfer_parent_class parent_class
-G_DEFINE_TYPE (GstNvInfer, gst_nvinfer, GST_TYPE_BASE_TRANSFORM);
+G_DEFINE_TYPE (GstNvInferOnnx, gst_nvinfer, GST_TYPE_BASE_TRANSFORM);
 
 /* Implementation of the GObject/GstBaseTransform interfaces. */
 static void gst_nvinfer_finalize (GObject * object);
@@ -125,7 +125,7 @@ static GstFlowReturn gst_nvinfer_generate_output (GstBaseTransform *
 static gpointer gst_nvinfer_input_queue_loop (gpointer data);
 static gpointer gst_nvinfer_output_loop (gpointer data);
 
-static void gst_nvinfer_reset_init_params (GstNvInfer * nvinfer);
+static void gst_nvinfer_reset_init_params (GstNvInferOnnx * nvinfer);
 
 /* Create enum type for the process mode property. */
 #define GST_TYPE_NVDSINFER_PROCESS_MODE (gst_nvinfer_process_mode_get_type ())
@@ -141,7 +141,7 @@ gst_nvinfer_process_mode_get_type (void)
   };
 
   if (g_once_init_enter (&process_mode_type)) {
-    GType tmp = g_enum_register_static ("GstNvInferProcessModeType",
+    GType tmp = g_enum_register_static ("GstNvInferOnnxProcessModeType",
         process_mode);
     g_once_init_leave (&process_mode_type, tmp);
   }
@@ -171,7 +171,7 @@ get_element_size (NvDsInferDataType data_type)
  * element.
  */
 static void
-gst_nvinfer_class_init (GstNvInferClass * klass)
+gst_nvinfer_class_init (GstNvInferOnnxClass * klass)
 {
   GObjectClass *gobject_class;
   GstElementClass *gstelement_class;
@@ -307,7 +307,7 @@ gst_nvinfer_class_init (GstNvInferClass * klass)
       g_signal_new ("model-updated",
       G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST,
-      G_STRUCT_OFFSET (GstNvInferClass, model_updated),
+      G_STRUCT_OFFSET (GstNvInferOnnxClass, model_updated),
       NULL, NULL, NULL,
       G_TYPE_NONE, 2, G_TYPE_INT, G_TYPE_STRING);
 
@@ -326,7 +326,7 @@ gst_nvinfer_class_init (GstNvInferClass * klass)
 }
 
 static void
-gst_nvinfer_init (GstNvInfer * nvinfer)
+gst_nvinfer_init (GstNvInferOnnx * nvinfer)
 {
   GstBaseTransform *btrans = GST_BASE_TRANSFORM (nvinfer);
 
@@ -337,7 +337,7 @@ gst_nvinfer_init (GstNvInfer * nvinfer)
    * is still called. */
   gst_base_transform_set_passthrough (GST_BASE_TRANSFORM (btrans), TRUE);
 
-  nvinfer->impl = reinterpret_cast<GstNvInferImpl*>(new DsNvInferImpl(nvinfer));
+  nvinfer->impl = reinterpret_cast<GstNvInferOnnxImpl*>(new DsNvInferImpl(nvinfer));
   DsNvInferImpl *impl = DS_NVINFER_IMPL (nvinfer);
 
   /* Initialize all property variables to default values */
@@ -375,7 +375,7 @@ gst_nvinfer_init (GstNvInfer * nvinfer)
 static void
 gst_nvinfer_finalize (GObject * object)
 {
-  GstNvInfer *nvinfer = GST_NVINFER (object);
+  GstNvInferOnnx *nvinfer = GST_NVINFER (object);
 
   g_mutex_clear (&nvinfer->process_lock);
   g_cond_clear (&nvinfer->process_cond);
@@ -398,7 +398,7 @@ static void
 gst_nvinfer_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
 {
-  GstNvInfer *nvinfer = GST_NVINFER (object);
+  GstNvInferOnnx *nvinfer = GST_NVINFER (object);
   DsNvInferImpl *impl = DS_NVINFER_IMPL (nvinfer);
 
   if (prop_id < PROP_LAST) {
@@ -520,7 +520,7 @@ static void
 gst_nvinfer_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec)
 {
-  GstNvInfer *nvinfer = GST_NVINFER (object);
+  GstNvInferOnnx *nvinfer = GST_NVINFER (object);
   DsNvInferImpl *impl = DS_NVINFER_IMPL (nvinfer);
 
   switch (prop_id) {
@@ -589,7 +589,7 @@ gst_nvinfer_get_property (GObject * object, guint prop_id,
 
 void gst_nvinfer_logger(NvDsInferContextHandle handle, unsigned int unique_id, NvDsInferLogLevel log_level,
     const char* log_message, void* user_ctx) {
-    GstNvInfer* nvinfer = GST_NVINFER(user_ctx);
+    GstNvInferOnnx* nvinfer = GST_NVINFER(user_ctx);
 
     switch (log_level) {
     case NVDSINFER_LOG_ERROR:
@@ -611,7 +611,7 @@ void gst_nvinfer_logger(NvDsInferContextHandle handle, unsigned int unique_id, N
  * Reset m_InitParams structure while preserving property values set through
  * GObject set method. */
 static void
-gst_nvinfer_reset_init_params (GstNvInfer * nvinfer)
+gst_nvinfer_reset_init_params (GstNvInferOnnx * nvinfer)
 {
   DsNvInferImpl *impl = DS_NVINFER_IMPL(nvinfer);
   auto prev_params = std::move(impl->m_InitParams);
@@ -642,7 +642,7 @@ gst_nvinfer_reset_init_params (GstNvInfer * nvinfer)
 static gboolean
 gst_nvinfer_sink_event (GstBaseTransform * trans, GstEvent * event)
 {
-  GstNvInfer *nvinfer = GST_NVINFER (trans);
+  GstNvInferOnnx *nvinfer = GST_NVINFER (trans);
   gboolean ignore_serialized_event = FALSE;
 
   /** The TAG event is sent many times leading to drop in performance because of
@@ -661,7 +661,7 @@ gst_nvinfer_sink_event (GstBaseTransform * trans, GstEvent * event)
    * the buffers are already pushed downstream. */
   if (GST_EVENT_IS_SERIALIZED (event) && !ignore_serialized_event &&
       !nvinfer->classifier_async_mode) {
-    GstNvInferBatch *batch = new GstNvInferBatch;
+    GstNvInferOnnxBatch *batch = new GstNvInferOnnxBatch;
     batch->event_marker = TRUE;
 
     g_mutex_lock (&nvinfer->process_lock);
@@ -684,7 +684,7 @@ gst_nvinfer_sink_event (GstBaseTransform * trans, GstEvent * event)
     /* New source added in the pipeline. Create a source info instance for it. */
     guint source_id;
     gst_nvevent_parse_pad_added (event, &source_id);
-    nvinfer->source_info->emplace (source_id, GstNvInferSourceInfo ());
+    nvinfer->source_info->emplace (source_id, GstNvInferOnnxSourceInfo ());
   }
 
   if ((GstNvEventType) GST_EVENT_TYPE (event) == GST_NVEVENT_PAD_DELETED) {
@@ -717,7 +717,7 @@ gst_nvinfer_sink_event (GstBaseTransform * trans, GstEvent * event)
 static gboolean
 gst_nvinfer_start (GstBaseTransform * btrans)
 {
-  GstNvInfer *nvinfer = GST_NVINFER (btrans);
+  GstNvInferOnnx *nvinfer = GST_NVINFER (btrans);
   GstAllocationParams allocation_params;
   cudaError_t cudaReturn;
   NvBufSurfaceColorFormat color_format;
@@ -730,7 +730,7 @@ gst_nvinfer_start (GstBaseTransform * btrans)
   NvDsInferContextInitParams *init_params = impl->m_InitParams.get ();
   assert (init_params);
 
-  nvtx_str = "GstNvInfer: UID=" + std::to_string(nvinfer->unique_id);
+  nvtx_str = "GstNvInferOnnx: UID=" + std::to_string(nvinfer->unique_id);
   auto nvtx_deleter = [](nvtxDomainHandle_t d) { nvtxDomainDestroy (d); };
   std::unique_ptr<nvtxDomainRegistration, decltype(nvtx_deleter)> nvtx_domain_ptr (
       nvtxDomainCreate(nvtx_str.c_str()), nvtx_deleter);
@@ -817,7 +817,7 @@ gst_nvinfer_start (GstBaseTransform * btrans)
   std::unique_ptr<GstStructure, decltype(config_deleter)> config_ptr (
       gst_buffer_pool_get_config (pool_ptr.get()), config_deleter);
   gst_buffer_pool_config_set_params (config_ptr.get(), nullptr,
-      sizeof (GstNvInferMemory), INTERNAL_BUF_POOL_SIZE, INTERNAL_BUF_POOL_SIZE);
+      sizeof (GstNvInferOnnxMemory), INTERNAL_BUF_POOL_SIZE, INTERNAL_BUF_POOL_SIZE);
 
   /* Based on the network input requirements decide the buffer pool color format. */
   switch (init_params->networkInputFormat) {
@@ -843,7 +843,7 @@ gst_nvinfer_start (GstBaseTransform * btrans)
       return FALSE;
   }
 
-  /* Create a new GstNvInferAllocator instance. Allocator has methods to allocate
+  /* Create a new GstNvInferOnnxAllocator instance. Allocator has methods to allocate
    * and free custom memories. */
   auto allocator_deleter = [](GstAllocator *a) { if (a) gst_object_unref (a); };
   std::unique_ptr<GstAllocator, decltype(allocator_deleter)> allocator_ptr (
@@ -909,9 +909,9 @@ gst_nvinfer_start (GstBaseTransform * btrans)
   nvinfer->transform_params.transform_flip = NvBufSurfTransform_None;
 
   /* Initialize the object history map for source 0. */
-  nvinfer->source_info = new std::unordered_map < gint, GstNvInferSourceInfo >;
-  nvinfer->source_info->emplace (0, GstNvInferSourceInfo {
-      GstNvInferObjectHistoryMap (), 0}
+  nvinfer->source_info = new std::unordered_map < gint, GstNvInferOnnxSourceInfo >;
+  nvinfer->source_info->emplace (0, GstNvInferOnnxSourceInfo {
+      GstNvInferOnnxObjectHistoryMap (), 0}
   );
 
   if (nvinfer->classifier_async_mode) {
@@ -959,7 +959,7 @@ gst_nvinfer_start (GstBaseTransform * btrans)
 static gboolean
 gst_nvinfer_stop (GstBaseTransform * btrans)
 {
-  GstNvInfer *nvinfer = GST_NVINFER (btrans);
+  GstNvInferOnnx *nvinfer = GST_NVINFER (btrans);
   DsNvInferImpl *impl = DS_NVINFER_IMPL (nvinfer);
 
   LockGMutex locker (nvinfer->process_lock);
@@ -1009,7 +1009,7 @@ gst_nvinfer_stop (GstBaseTransform * btrans)
  * input format.
  */
 static GstFlowReturn
-get_converted_buffer (GstNvInfer * nvinfer, NvBufSurface * src_surf,
+get_converted_buffer (GstNvInferOnnx * nvinfer, NvBufSurface * src_surf,
     NvBufSurfaceParams * src_frame, NvOSD_RectParams * crop_rect_params,
     NvBufSurface * dest_surf, NvBufSurfaceParams * dest_frame,
     gdouble & ratio_x, gdouble & ratio_y, void *destCudaPtr)
@@ -1106,7 +1106,7 @@ get_converted_buffer (GstNvInfer * nvinfer, NvBufSurface * src_surf,
 static gpointer
 gst_nvinfer_input_queue_loop (gpointer data)
 {
-  GstNvInfer *nvinfer = (GstNvInfer *) data;
+  GstNvInferOnnx *nvinfer = (GstNvInferOnnx *) data;
   DsNvInferImpl *impl = DS_NVINFER_IMPL (nvinfer);
   std::string nvtx_str;
   nvtxEventAttributes_t eventAttrib = {0};
@@ -1119,8 +1119,8 @@ gst_nvinfer_input_queue_loop (gpointer data)
   LockGMutex locker (nvinfer->process_lock);
 
   while (nvinfer->stop == FALSE) {
-    GstNvInferBatch *batch;
-    GstNvInferMemory *mem;
+    GstNvInferOnnxBatch *batch;
+    GstNvInferOnnxMemory *mem;
     NvDsInferContextBatchInput input_batch;
     std::vector < void *>input_frames;
     unsigned int i;
@@ -1131,7 +1131,7 @@ gst_nvinfer_input_queue_loop (gpointer data)
       locker.wait (nvinfer->process_cond);
       continue;
     }
-    batch = (GstNvInferBatch *) g_queue_pop_head (nvinfer->input_queue);
+    batch = (GstNvInferOnnxBatch *) g_queue_pop_head (nvinfer->input_queue);
     NvDsInferContextPtr nvdsinfer_ctx = impl->m_InferCtx;
 
     /* Check if this is a push buffer or event marker batch. If yes, no need to
@@ -1200,8 +1200,8 @@ queue_batch:
 }
 
 static gboolean
-convert_batch_and_push_to_input_thread (GstNvInfer *nvinfer,
-    GstNvInferBatch *batch, GstNvInferMemory *mem)
+convert_batch_and_push_to_input_thread (GstNvInferOnnx *nvinfer,
+    GstNvInferOnnxBatch *batch, GstNvInferOnnxMemory *mem)
 {
   NvBufSurfTransform_Error err = NvBufSurfTransformError_Success;
   std::string nvtx_str;
@@ -1252,16 +1252,16 @@ convert_batch_and_push_to_input_thread (GstNvInfer *nvinfer,
 
 /* Process entire frames in the batched buffer. */
 static GstFlowReturn
-gst_nvinfer_process_full_frame (GstNvInfer * nvinfer, GstBuffer * inbuf,
+gst_nvinfer_process_full_frame (GstNvInferOnnx * nvinfer, GstBuffer * inbuf,
     NvBufSurface * in_surf)
 {
   NvOSD_RectParams rect_params;
   NvDsBatchMeta *batch_meta = NULL;
   guint num_filled = 0;
-  std::unique_ptr<GstNvInferBatch> batch = nullptr;
+  std::unique_ptr<GstNvInferOnnxBatch> batch = nullptr;
   GstBuffer *conv_gst_buf = nullptr;
   GstFlowReturn flow_ret;
-  GstNvInferMemory *memory = nullptr;
+  GstNvInferOnnxMemory *memory = nullptr;
   gdouble scale_ratio_x, scale_ratio_y;
   gboolean skip_batch;
 
@@ -1298,10 +1298,10 @@ gst_nvinfer_process_full_frame (GstNvInfer * nvinfer, GstBuffer * inbuf,
   for (guint i = 0; i < num_filled; i++) {
     guint idx;
 
-    /* No existing GstNvInferBatch structure. Allocate a new structure,
+    /* No existing GstNvInferOnnxBatch structure. Allocate a new structure,
      * acquire a buffer from our internal pool for conversions. */
     if (batch == nullptr) {
-      batch.reset (new GstNvInferBatch);
+      batch.reset (new GstNvInferOnnxBatch);
       batch->push_buffer = FALSE;
       batch->inbuf = inbuf;
       batch->inbuf_batch_num = nvinfer->current_batch_num;
@@ -1337,7 +1337,7 @@ gst_nvinfer_process_full_frame (GstNvInfer * nvinfer, GstBuffer * inbuf,
     }
 
     /* Adding a frame to the current batch. Set the frames members. */
-    GstNvInferFrame frame;
+    GstNvInferOnnxFrame frame;
     frame.converted_frame_ptr = memory->frame_memory_ptrs[idx];
     frame.scale_ratio_x = scale_ratio_x;
     frame.scale_ratio_y = scale_ratio_y;
@@ -1356,7 +1356,7 @@ gst_nvinfer_process_full_frame (GstNvInfer * nvinfer, GstBuffer * inbuf,
         return GST_FLOW_ERROR;
       }
 
-      /* Batch submitted. Set batch to nullptr so that a new GstNvInferBatch
+      /* Batch submitted. Set batch to nullptr so that a new GstNvInferOnnxBatch
        * structure can be allocated if required. */
       batch.release ();
       conv_gst_buf = nullptr;
@@ -1369,13 +1369,13 @@ gst_nvinfer_process_full_frame (GstNvInfer * nvinfer, GstBuffer * inbuf,
 /* The object history map should be trimmed periodically to keep the map size
  * in check. */
 static void
-cleanup_history_map (GstNvInfer * nvinfer, GstBuffer * inbuf)
+cleanup_history_map (GstNvInferOnnx * nvinfer, GstBuffer * inbuf)
 {
   LockGMutex locker (nvinfer->process_lock);
   /* Find the history map for each source whose frames are present in the batch
    * and trim the map. */
   for (auto &source_iter : *(nvinfer->source_info)) {
-    GstNvInferSourceInfo &source_info = source_iter.second;
+    GstNvInferOnnxSourceInfo &source_info = source_iter.second;
     if (source_info.last_seen_frame_num - source_info.last_cleanup_frame_num <
         MAP_CLEANUP_INTERVAL)
       continue;
@@ -1400,9 +1400,9 @@ cleanup_history_map (GstNvInfer * nvinfer, GstBuffer * inbuf)
 
 /* Function to decide if object should be inferred on. */
 static inline gboolean
-should_infer_object (GstNvInfer * nvinfer, GstBuffer * inbuf,
+should_infer_object (GstNvInferOnnx * nvinfer, GstBuffer * inbuf,
     NvDsObjectMeta * obj_meta, gulong frame_num,
-    GstNvInferObjectHistory * history)
+    GstNvInferOnnxObjectHistory * history)
 {
   if (nvinfer->operate_on_gie_id > -1 &&
       obj_meta->unique_component_id != nvinfer->operate_on_gie_id)
@@ -1462,12 +1462,12 @@ should_infer_object (GstNvInfer * nvinfer, GstBuffer * inbuf,
  * are attached (in the input thread) to the object whenever it is found in the
  * frame again. */
 static GstFlowReturn
-gst_nvinfer_process_objects (GstNvInfer * nvinfer, GstBuffer * inbuf,
+gst_nvinfer_process_objects (GstNvInferOnnx * nvinfer, GstBuffer * inbuf,
     NvBufSurface * in_surf)
 {
-  std::unique_ptr<GstNvInferBatch> batch (nullptr);
+  std::unique_ptr<GstNvInferOnnxBatch> batch (nullptr);
   GstBuffer *conv_gst_buf = nullptr;
-  GstNvInferMemory *memory = nullptr;
+  GstNvInferOnnxMemory *memory = nullptr;
   GstFlowReturn flow_ret;
   gdouble scale_ratio_x, scale_ratio_y;
   gboolean warn_untracked_object = FALSE;
@@ -1482,7 +1482,7 @@ gst_nvinfer_process_objects (GstNvInfer * nvinfer, GstBuffer * inbuf,
   for (NvDsMetaList * l_frame = batch_meta->frame_meta_list; l_frame != NULL;
       l_frame = l_frame->next) {
     NvDsFrameMeta *frame_meta = (NvDsFrameMeta *) (l_frame->data);
-    GstNvInferSourceInfo *source_info = nullptr;
+    GstNvInferOnnxSourceInfo *source_info = nullptr;
 
     /* Find the source info instance. */
     auto iter = nvinfer->source_info->find (frame_meta->pad_index);
@@ -1502,7 +1502,7 @@ gst_nvinfer_process_objects (GstNvInfer * nvinfer, GstBuffer * inbuf,
         l_obj = l_obj->next) {
       NvDsObjectMeta *object_meta = (NvDsObjectMeta *) (l_obj->data);
       guint idx;
-      std::shared_ptr<GstNvInferObjectHistory> obj_history;
+      std::shared_ptr<GstNvInferOnnxObjectHistory> obj_history;
       gulong frame_num = frame_meta->frame_num;
 
       /* Cannot infer on untracked objects in asynchronous mode. */
@@ -1541,10 +1541,10 @@ gst_nvinfer_process_objects (GstNvInfer * nvinfer, GstBuffer * inbuf,
           /* Working in synchronous mode. Defer attachment of classifier metadata
            * in the object history to the output thread. */
           if (!nvinfer->classifier_async_mode) {
-            /* No existing GstNvInferBatch structure. Allocate a new structure,
+            /* No existing GstNvInferOnnxBatch structure. Allocate a new structure,
              * acquire a buffer from our internal pool for conversions. */
             if (batch == nullptr) {
-              batch.reset (new GstNvInferBatch);
+              batch.reset (new GstNvInferOnnxBatch);
               batch->push_buffer = FALSE;
               batch->event_marker = FALSE;
               batch->inbuf = inbuf;
@@ -1577,7 +1577,7 @@ gst_nvinfer_process_objects (GstNvInfer * nvinfer, GstBuffer * inbuf,
        * attach the results. New results will be attached when inference on the
        * object is complete and the object is present in the frame after that. */
       if (obj_history && nvinfer->classifier_async_mode) {
-        GstNvInferFrame frame;
+        GstNvInferOnnxFrame frame;
         frame.obj_meta = object_meta;
         attach_metadata_classifier (nvinfer, nullptr, frame,
             obj_history->cached_info);
@@ -1594,7 +1594,7 @@ gst_nvinfer_process_objects (GstNvInfer * nvinfer, GstBuffer * inbuf,
           obj_history == nullptr) {
         auto ret_iter =
             source_info->object_history_map.emplace (object_meta->object_id,
-            std::make_shared<GstNvInferObjectHistory> ());
+            std::make_shared<GstNvInferOnnxObjectHistory> ());
         obj_history = ret_iter.first->second;
       }
 
@@ -1608,10 +1608,10 @@ gst_nvinfer_process_objects (GstNvInfer * nvinfer, GstBuffer * inbuf,
 
       locker.unlock ();
 
-      /* No existing GstNvInferBatch structure. Allocate a new structure,
+      /* No existing GstNvInferOnnxBatch structure. Allocate a new structure,
        * acquire a buffer from our internal pool for conversions. */
       if (batch == nullptr) {
-        batch.reset (new GstNvInferBatch);
+        batch.reset (new GstNvInferOnnxBatch);
         batch->push_buffer = FALSE;
         batch->inbuf = (nvinfer->classifier_async_mode) ? nullptr : inbuf;
         batch->inbuf_batch_num = nvinfer->current_batch_num;
@@ -1642,7 +1642,7 @@ gst_nvinfer_process_objects (GstNvInfer * nvinfer, GstBuffer * inbuf,
       }
 
       /* Adding a frame to the current batch. Set the frames members. */
-      GstNvInferFrame frame;
+      GstNvInferOnnxFrame frame;
       frame.converted_frame_ptr = memory->frame_memory_ptrs[idx];
       frame.scale_ratio_x = scale_ratio_x;
       frame.scale_ratio_y = scale_ratio_y;
@@ -1661,7 +1661,7 @@ gst_nvinfer_process_objects (GstNvInfer * nvinfer, GstBuffer * inbuf,
       if (!convert_batch_and_push_to_input_thread (nvinfer, batch.get(), memory)) {
         return GST_FLOW_ERROR;
       }
-      /* Batch submitted. Set batch to nullptr so that a new GstNvInferBatch
+      /* Batch submitted. Set batch to nullptr so that a new GstNvInferOnnxBatch
        * structure can be allocated if required. */
       batch.release ();
       conv_gst_buf = nullptr;
@@ -1702,11 +1702,11 @@ static GstFlowReturn
 gst_nvinfer_submit_input_buffer (GstBaseTransform * btrans,
     gboolean discont, GstBuffer * inbuf)
 {
-  GstNvInfer *nvinfer = GST_NVINFER (btrans);
+  GstNvInferOnnx *nvinfer = GST_NVINFER (btrans);
   DsNvInferImpl *impl = DS_NVINFER_IMPL (nvinfer);
   GstMapInfo in_map_info;
   NvBufSurface *in_surf;
-  GstNvInferBatch *buf_push_batch;
+  GstNvInferOnnxBatch *buf_push_batch;
   GstFlowReturn flow_ret;
   std::string nvtx_str;
 
@@ -1786,7 +1786,7 @@ gst_nvinfer_submit_input_buffer (GstBaseTransform * btrans,
      * signal the input-queue and output thread that there are no more batches
      * belonging to this input buffer and this GstBuffer can be pushed to
      * downstream element once all the previous processing is done. */
-    buf_push_batch = new GstNvInferBatch;
+    buf_push_batch = new GstNvInferOnnxBatch;
     buf_push_batch->inbuf = inbuf;
     buf_push_batch->push_buffer = TRUE;
     buf_push_batch->nvtx_complete_buf_range = buf_process_range;
@@ -1809,7 +1809,7 @@ gst_nvinfer_submit_input_buffer (GstBaseTransform * btrans,
 static GstFlowReturn
 gst_nvinfer_generate_output (GstBaseTransform * btrans, GstBuffer ** outbuf)
 {
-  GstNvInfer *nvinfer = GST_NVINFER (btrans);
+  GstNvInferOnnx *nvinfer = GST_NVINFER (btrans);
   return nvinfer->last_flow_ret;
 }
 
@@ -1817,7 +1817,7 @@ gst_nvinfer_generate_output (GstBaseTransform * btrans, GstBuffer ** outbuf)
 static void
 gst_nvinfer_output_generated_file_write (GstBuffer * buf,
     NvDsInferNetworkInfo * network_info, NvDsInferLayerInfo * layers_info,
-    guint num_layers, guint batch_size, GstNvInfer * nvinfer)
+    guint num_layers, guint batch_size, GstNvInferOnnx * nvinfer)
 {
   guint i;
   gchar file_name[256];
@@ -1853,13 +1853,13 @@ gst_nvinfer_output_generated_file_write (GstBuffer * buf,
 }
 
 /* Called when the last ref on the GstMiniObject inside
- * GstNvInferTensorOutputObject is removed. The batch output can be released
+ * GstNvInferOnnxTensorOutputObject is removed. The batch output can be released
  * back to the NvDsInferContext. */
 static void
 gst_nvinfer_tensoroutput_free (GstMiniObject * obj)
 {
-  GstNvInferTensorOutputObject *output_obj =
-      (GstNvInferTensorOutputObject *) obj;
+  GstNvInferOnnxTensorOutputObject *output_obj =
+      (GstNvInferOnnxTensorOutputObject *) obj;
   assert (output_obj->infer_context.get());
   output_obj->infer_context->releaseBatchOutput (output_obj->
       batch_output);
@@ -1874,7 +1874,7 @@ gst_nvinfer_tensoroutput_free (GstMiniObject * obj)
 static gpointer
 gst_nvinfer_output_loop (gpointer data)
 {
-  GstNvInfer *nvinfer = GST_NVINFER (data);
+  GstNvInferOnnx *nvinfer = GST_NVINFER (data);
   DsNvInferImpl *impl = DS_NVINFER_IMPL (nvinfer);
   NvDsInferStatus status = NVDSINFER_SUCCESS;
   nvtxEventAttributes_t eventAttrib = {0};
@@ -1890,7 +1890,7 @@ gst_nvinfer_output_loop (gpointer data)
   LockGMutex locker (nvinfer->process_lock);
   /* Run till signalled to stop. */
   while (!nvinfer->stop) {
-    std::unique_ptr<GstNvInferBatch> batch = nullptr;
+    std::unique_ptr<GstNvInferOnnxBatch> batch = nullptr;
     NvDsInferContextBatchOutput *batch_output = nullptr;
 
     /* Wait if processing queue is empty. */
@@ -1900,7 +1900,7 @@ gst_nvinfer_output_loop (gpointer data)
     }
 
     /* Pop a batch from the element's process queue. */
-    batch.reset ((GstNvInferBatch *) g_queue_pop_head (nvinfer->process_queue));
+    batch.reset ((GstNvInferOnnxBatch *) g_queue_pop_head (nvinfer->process_queue));
     g_cond_broadcast (&nvinfer->process_cond);
 
     /* Event marker used for synchronization. No need to process further. */
@@ -1912,9 +1912,9 @@ gst_nvinfer_output_loop (gpointer data)
      * not been inferred on in the current frame. */
     if (batch->frames.size() == 0 && !batch->push_buffer) {
       for (auto &hist : batch->objs_pending_meta_attach) {
-        GstNvInferFrame frame;
+        GstNvInferOnnxFrame frame;
         frame.obj_meta = hist.second;
-        std::weak_ptr<GstNvInferObjectHistory> obj_history = hist.first;
+        std::weak_ptr<GstNvInferOnnxObjectHistory> obj_history = hist.first;
         attach_metadata_classifier (nvinfer, nullptr, frame,
             obj_history.lock()->cached_info);
       }
@@ -1961,12 +1961,12 @@ gst_nvinfer_output_loop (gpointer data)
     NvDsInferContextPtr nvdsinfer_ctx = impl->m_InferCtx;
 
     /* Create and initialize the object for managing the usage of batch_output. */
-    auto tensor_deleter = [] (GstNvInferTensorOutputObject *o) {
+    auto tensor_deleter = [] (GstNvInferOnnxTensorOutputObject *o) {
       if (o)
         gst_mini_object_unref (GST_MINI_OBJECT (o));
     };
-    std::unique_ptr<GstNvInferTensorOutputObject, decltype(tensor_deleter)>
-        tensor_out_object (new GstNvInferTensorOutputObject, tensor_deleter);
+    std::unique_ptr<GstNvInferOnnxTensorOutputObject, decltype(tensor_deleter)>
+        tensor_out_object (new GstNvInferOnnxTensorOutputObject, tensor_deleter);
     gst_mini_object_init (GST_MINI_OBJECT (tensor_out_object.get()), 0, G_TYPE_POINTER, NULL,
         NULL, gst_nvinfer_tensoroutput_free);
     tensor_out_object->infer_context = nvdsinfer_ctx;
@@ -2010,7 +2010,7 @@ gst_nvinfer_output_loop (gpointer data)
 
     /* For each frame attach metadata output. */
     for (guint i = 0; i < batch->frames.size (); i++) {
-      GstNvInferFrame & frame = batch->frames[i];
+      GstNvInferOnnxFrame & frame = batch->frames[i];
       NvDsInferFrameOutput &frame_output = batch_output->frames[i];
       auto obj_history = frame.history.lock ();
 
@@ -2028,7 +2028,7 @@ gst_nvinfer_output_loop (gpointer data)
                 frame, frame_output.detectionOutput);
       } else if (IS_CLASSIFIER_INSTANCE (nvinfer)) {
         NvDsInferClassificationOutput &classification_output = frame_output.classificationOutput;
-        GstNvInferObjectInfo new_info;
+        GstNvInferOnnxObjectInfo new_info;
         new_info.attributes.assign(classification_output.attributes,
             classification_output.attributes + classification_output.numAttributes);
         new_info.label.assign(classification_output.label);
@@ -2060,9 +2060,9 @@ gst_nvinfer_output_loop (gpointer data)
     /* Attach latest available classification metadata for objects that have
      * not been inferred on in the current frame. */
     for (auto &hist : batch->objs_pending_meta_attach) {
-      GstNvInferFrame frame;
+      GstNvInferOnnxFrame frame;
       frame.obj_meta = hist.second;
-      std::weak_ptr<GstNvInferObjectHistory> obj_history = hist.first;
+      std::weak_ptr<GstNvInferOnnxObjectHistory> obj_history = hist.first;
       attach_metadata_classifier (nvinfer, nullptr, frame,
           obj_history.lock()->cached_info);
     }

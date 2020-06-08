@@ -51,7 +51,7 @@ LockGMutex::wait (GCond & cond)
     g_cond_wait (&cond, &m);
 }
 
-DsNvInferImpl::DsNvInferImpl (GstNvInfer * infer)
+DsNvInferImpl::DsNvInferImpl (GstNvInferOnnx * infer)
   : m_InitParams (new NvDsInferContextInitParams),
     m_GstInfer (infer)
 {
@@ -348,7 +348,7 @@ DsNvInferImpl::getNextReplacementUnlock ()
 NvDsInferStatus
 DsNvInferImpl::flushDataUnlock (LockGMutex & lock)
 {
-  GstNvInferBatch *batch = new GstNvInferBatch;
+  GstNvInferOnnxBatch *batch = new GstNvInferOnnxBatch;
   batch->event_marker = TRUE;
 
   /* Push the event marker batch to ensure all data processed. */
@@ -383,7 +383,7 @@ DsNvInferImpl::resetContextUnlock (NvDsInferContextPtr ctx,
   m_InferCtx = ctx;
   m_InitParams = std::move (params);
 
-  GstNvInfer *nvinfer = m_GstInfer;
+  GstNvInferOnnx *nvinfer = m_GstInfer;
   g_free (nvinfer->config_file_path);
   nvinfer->config_file_path = g_strdup (path.c_str ());
   /* Get the network resolution. */

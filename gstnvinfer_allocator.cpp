@@ -16,16 +16,16 @@
 #define GST_TYPE_NVINFER_ALLOCATOR \
     (gst_nvinfer_allocator_get_type ())
 #define GST_NVINFER_ALLOCATOR(obj) \
-    (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_NVINFER_ALLOCATOR,GstNvInferAllocator))
+    (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_NVINFER_ALLOCATOR,GstNvInferOnnxAllocator))
 #define GST_NVINFER_ALLOCATOR_CLASS(klass) \
-    (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_NVINFER_ALLOCATOR,GstNvInferAllocatorClass))
+    (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_NVINFER_ALLOCATOR,GstNvInferOnnxAllocatorClass))
 #define GST_IS_NVINFER_ALLOCATOR(obj) \
     (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_NVINFER_ALLOCATOR))
 #define GST_IS_NVINFER_ALLOCATOR_CLASS(klass) \
     (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_NVINFER_ALLOCATOR))
 
-typedef struct _GstNvInferAllocator GstNvInferAllocator;
-typedef struct _GstNvInferAllocatorClass GstNvInferAllocatorClass;
+typedef struct _GstNvInferOnnxAllocator GstNvInferOnnxAllocator;
+typedef struct _GstNvInferOnnxAllocatorClass GstNvInferOnnxAllocatorClass;
 
 G_GNUC_INTERNAL GType gst_nvinfer_allocator_get_type (void);
 
@@ -35,7 +35,7 @@ GST_DEBUG_CATEGORY_STATIC (gst_nvinfer_allocator_debug);
 /**
  * Extends the GstAllocator class. Holds the parameters for allocator.
  */
-struct _GstNvInferAllocator
+struct _GstNvInferOnnxAllocator
 {
   GstAllocator allocator;
   guint batch_size;
@@ -45,7 +45,7 @@ struct _GstNvInferAllocator
   guint gpu_id;
 };
 
-struct _GstNvInferAllocatorClass
+struct _GstNvInferOnnxAllocatorClass
 {
   GstAllocatorClass parent_class;
 };
@@ -56,7 +56,7 @@ struct _GstNvInferAllocatorClass
 #define _do_init \
     GST_DEBUG_CATEGORY_INIT (gst_nvinfer_allocator_debug, "nvinferallocator", 0, "nvinfer allocator");
 #define gst_nvinfer_allocator_parent_class parent_class
-G_DEFINE_TYPE_WITH_CODE (GstNvInferAllocator, gst_nvinfer_allocator,
+G_DEFINE_TYPE_WITH_CODE (GstNvInferOnnxAllocator, gst_nvinfer_allocator,
     GST_TYPE_ALLOCATOR, _do_init);
 
 /** Type of the memory allocated by the allocator. This can be used to identify
@@ -68,8 +68,8 @@ typedef struct
 {
   /** Should be the first member of a structure extending GstMemory. */
   GstMemory mem;
-  GstNvInferMemory mem_infer;
-} GstNvInferMem;
+  GstNvInferOnnxMemory mem_infer;
+} GstNvInferOnnxMem;
 
 #ifdef IS_TEGRA
 extern "C" EGLImageKHR NvEGLImageFromFd (EGLDisplay display, int dmabuf_fd);
@@ -82,9 +82,9 @@ static GstMemory *
 gst_nvinfer_allocator_alloc (GstAllocator * allocator, gsize size,
     GstAllocationParams * params)
 {
-  GstNvInferAllocator *inferallocator = GST_NVINFER_ALLOCATOR (allocator);
-  GstNvInferMem *nvmem = new GstNvInferMem;
-  GstNvInferMemory *tmem = &nvmem->mem_infer;
+  GstNvInferOnnxAllocator *inferallocator = GST_NVINFER_ALLOCATOR (allocator);
+  GstNvInferOnnxMem *nvmem = new GstNvInferOnnxMem;
+  GstNvInferOnnxMemory *tmem = &nvmem->mem_infer;
   NvBufSurfaceCreateParams create_params = { 0 };
 
   create_params.gpuId = inferallocator->gpu_id;
@@ -149,10 +149,10 @@ gst_nvinfer_allocator_alloc (GstAllocator * allocator, gsize size,
 static void
 gst_nvinfer_allocator_free (GstAllocator * allocator, GstMemory * memory)
 {
-  GstNvInferMem *nvmem = (GstNvInferMem *) memory;
-  GstNvInferMemory *tmem = &nvmem->mem_infer;
+  GstNvInferOnnxMem *nvmem = (GstNvInferOnnxMem *) memory;
+  GstNvInferOnnxMemory *tmem = &nvmem->mem_infer;
 #ifdef IS_TEGRA
-  GstNvInferAllocator *inferallocator = GST_NVINFER_ALLOCATOR (allocator);
+  GstNvInferOnnxAllocator *inferallocator = GST_NVINFER_ALLOCATOR (allocator);
 
   for (size_t i = 0; i < inferallocator->batch_size; i++) {
     cuGraphicsUnregisterResource (tmem->cuda_resources[i]);
@@ -166,11 +166,11 @@ gst_nvinfer_allocator_free (GstAllocator * allocator, GstMemory * memory)
 }
 
 /* Function called when mapping memory allocated by this allocator. Should
- * return pointer to GstNvInferMemory. */
+ * return pointer to GstNvInferOnnxMemory. */
 static gpointer
 gst_nvinfer_memory_map (GstMemory * mem, gsize maxsize, GstMapFlags flags)
 {
-  GstNvInferMem *nvmem = (GstNvInferMem *) mem;
+  GstNvInferOnnxMem *nvmem = (GstNvInferOnnxMem *) mem;
 
   return (gpointer) & nvmem->mem_infer;
 }
@@ -182,7 +182,7 @@ gst_nvinfer_memory_unmap (GstMemory * mem)
 
 /* Standard boiler plate. Assigning implemented function pointers. */
 static void
-gst_nvinfer_allocator_class_init (GstNvInferAllocatorClass * klass)
+gst_nvinfer_allocator_class_init (GstNvInferOnnxAllocatorClass * klass)
 {
   GstAllocatorClass *allocator_class = GST_ALLOCATOR_CLASS (klass);
 
@@ -193,7 +193,7 @@ gst_nvinfer_allocator_class_init (GstNvInferAllocatorClass * klass)
 /* Standard boiler plate. Assigning implemented function pointers and setting
  * the memory type. */
 static void
-gst_nvinfer_allocator_init (GstNvInferAllocator * allocator)
+gst_nvinfer_allocator_init (GstNvInferOnnxAllocator * allocator)
 {
   GstAllocator *parent = GST_ALLOCATOR_CAST (allocator);
 
@@ -208,7 +208,7 @@ GstAllocator *
 gst_nvinfer_allocator_new (guint width, guint height,
     NvBufSurfaceColorFormat color_format, guint batch_size, guint gpu_id)
 {
-  GstNvInferAllocator *allocator = (GstNvInferAllocator *)
+  GstNvInferOnnxAllocator *allocator = (GstNvInferOnnxAllocator *)
       g_object_new (GST_TYPE_NVINFER_ALLOCATOR,
       nullptr);
 
@@ -221,7 +221,7 @@ gst_nvinfer_allocator_new (guint width, guint height,
   return (GstAllocator *) allocator;
 }
 
-GstNvInferMemory *
+GstNvInferOnnxMemory *
 gst_nvinfer_buffer_get_memory (GstBuffer * buffer)
 {
   GstMemory *mem;
@@ -231,5 +231,5 @@ gst_nvinfer_buffer_get_memory (GstBuffer * buffer)
   if (!mem || !gst_memory_is_type (mem, GST_NVINFER_MEMORY_TYPE))
     return nullptr;
 
-  return &(((GstNvInferMem *) mem)->mem_infer);
+  return &(((GstNvInferOnnxMem *) mem)->mem_infer);
 }

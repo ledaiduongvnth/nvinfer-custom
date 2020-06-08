@@ -79,8 +79,8 @@ get_absolute_file_path (
 static gboolean
 gst_nvinfer_parse_class_attrs (GKeyFile * key_file, gchar * group,
     NvDsInferDetectionParams & detection_params,
-    GstNvInferDetectionFilterParams & detection_filter_params,
-    GstNvInferColorParams & color_params)
+    GstNvInferOnnxDetectionFilterParams & detection_filter_params,
+    GstNvInferOnnxColorParams & color_params)
 {
   gboolean ret = FALSE;
   gchar **keys = nullptr;
@@ -300,7 +300,7 @@ done:
 }
 
 static gboolean
-gst_nvinfer_parse_other_attribute (GstNvInfer * nvinfer,
+gst_nvinfer_parse_other_attribute (GstNvInferOnnx * nvinfer,
     GKeyFile * key_file, const gchar * group_name, const gchar * key,
     const gchar * cfg_file_path)
 {
@@ -496,7 +496,7 @@ done:
  * parse those properties i.e. values set through g_object_set override the
  * corresponding properties in the config file. */
 static gboolean
-gst_nvinfer_parse_props (GstNvInfer * nvinfer,
+gst_nvinfer_parse_props (GstNvInferOnnx * nvinfer,
     NvDsInferContextInitParams * init_params,
     GKeyFile * key_file, const gchar * cfg_file_path)
 {
@@ -1030,7 +1030,7 @@ done:
 /* Parse the nvinfer config file. Returns FALSE in case of an error. */
 gboolean
 gst_nvinfer_parse_config_file (
-    GstNvInfer * nvinfer,
+    GstNvInferOnnx * nvinfer,
     NvDsInferContextInitParams *init_params,
     const gchar * cfg_file_path)
 {
@@ -1066,8 +1066,8 @@ gst_nvinfer_parse_config_file (
         DEFAULT_POST_CLUSTER_THRESHOLD, DEFAULT_EPS,
         DEFAULT_GROUP_THRESHOLD, DEFAULT_MIN_BOXES,
         DEFAULT_DBSCAN_MIN_SCORE, DEFAULT_NMS_IOU_THRESHOLD};
-    GstNvInferDetectionFilterParams detection_filter_params{0, 0, 0, 0, 0, 0};
-    GstNvInferColorParams color_params;
+    GstNvInferOnnxDetectionFilterParams detection_filter_params{0, 0, 0, 0, 0, 0};
+    GstNvInferOnnxColorParams color_params;
     color_params.have_border_color = TRUE;
     color_params.border_color = (NvOSD_ColorParams) {1, 0, 0, 1};
     color_params.have_bg_color = FALSE;
@@ -1093,10 +1093,10 @@ gst_nvinfer_parse_config_file (
     for (unsigned int i = 0; i < init_params->numDetectedClasses; i++)
       init_params->perClassDetectionParams[i] = detection_params;
     nvinfer->perClassDetectionFilterParams =
-        new std::vector < GstNvInferDetectionFilterParams >
+        new std::vector < GstNvInferOnnxDetectionFilterParams >
         (init_params->numDetectedClasses, detection_filter_params);
     nvinfer->perClassColorParams =
-        new std::vector < GstNvInferColorParams >
+        new std::vector < GstNvInferOnnxColorParams >
         (init_params->numDetectedClasses, color_params);
 
     /* Parse values for specified classes. */
