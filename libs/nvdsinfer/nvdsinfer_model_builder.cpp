@@ -960,8 +960,8 @@ TrtModelBuilder::buildNetwork(const NvDsInferContextInitParams& initParams)
         buildOptions = createImplicitParams(initParams);
     }
 
-    UniquePtrWDestroy<nvinfer1::INetworkDefinition> network =
-        m_Builder->createNetworkV2(netDefFlags);
+    const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+    UniquePtrWDestroy<nvinfer1::INetworkDefinition> network = m_Builder->createNetworkV2(explicitBatch);
     assert(network);
 
     /* Parse the model using IModelParser interface. */
@@ -1212,13 +1212,13 @@ TrtModelBuilder::configImplicitOptions(ImplicitBuildParams& params)
     RETURN_NVINFER_ERROR(configCommonOptions(params),
         "config implicit params failed because of common option's error");
 
-    if (!network.hasImplicitBatchDimension())
-    {
-        dsInferError(
-            "build model failed due to BuildParams(implict) doesn't match "
-            "(explicit)network.");
-        return NVDSINFER_CONFIG_FAILED;
-    }
+//    if (!network.hasImplicitBatchDimension())
+//    {
+//        dsInferError(
+//            "build model failed due to BuildParams(implict) doesn't match "
+//            "(explicit)network.");
+//        return NVDSINFER_CONFIG_FAILED;
+//    }
 
     if (params.maxBatchSize <= 0)
     {

@@ -8,7 +8,7 @@
 # license agreement from NVIDIA Corporation is strictly prohibited.
 #################################################################################
 
-CUDA_VER?=
+CUDA_VER=10.2
 ifeq ($(CUDA_VER),)
   $(error "CUDA_VER is not set")
 endif
@@ -29,7 +29,8 @@ LIB_INSTALL_DIR?=/opt/nvidia/deepstream/deepstream-$(NVDS_VERSION)/lib/
 
 CFLAGS+= -fPIC -Wno-deprecated-declarations -std=c++14 \
 	 -I /usr/local/cuda-$(CUDA_VER)/include \
-	 -I ../../includes -DNDEBUG
+	 -I ../../includes -DNDEBUG \
+	 -I/usr/include/opencv4
 
 ifeq ($(shell uname -m), aarch64)
 CFLAGS+=-I/usr/include/opencv4
