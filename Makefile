@@ -38,7 +38,7 @@ LIBS+= -L$(LIB_INSTALL_DIR) -lnvdsgst_helper -lnvdsgst_meta -lnvds_meta \
 
 OBJS:= $(SRCS:.cpp=.o)
 
-PKGS:= gstreamer-1.0 gstreamer-base-1.0 gstreamer-video-1.0
+PKGS:= gstreamer-1.0 gstreamer-base-1.0 gstreamer-video-1.0 opencv4
 CFLAGS+=$(shell pkg-config --cflags $(PKGS))
 LIBS+=$(shell pkg-config --libs $(PKGS))
 

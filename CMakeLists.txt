@@ -19,6 +19,20 @@ add_executable(
         gstnvinfer_meta_utils.h
         gstnvinfer_property_parser.cpp
         gstnvinfer_property_parser.h
+        libs/nvdsinfer/nvdsinfer_backend.h
+        libs/nvdsinfer/nvdsinfer_backend.cpp
+        libs/nvdsinfer/nvdsinfer_backend.h
+        libs/nvdsinfer/nvdsinfer_context_impl.cpp
+        libs/nvdsinfer/nvdsinfer_context_impl.h
+        libs/nvdsinfer/nvdsinfer_context_impl_capi.cpp
+        libs/nvdsinfer/nvdsinfer_context_impl_output_parsing.cpp
+        libs/nvdsinfer/nvdsinfer_context_impl_capi.cpp
+        libs/nvdsinfer/nvdsinfer_conversion.cpp
+        libs/nvdsinfer/nvdsinfer_conversion.h
+        libs/nvdsinfer/nvdsinfer_func_utils.cpp
+        libs/nvdsinfer/nvdsinfer_func_utils.h
+        libs/nvdsinfer/nvdsinfer_model_builder.cpp
+        libs/nvdsinfer/nvdsinfer_model_builder.h
 )
 
 target_link_libraries(
