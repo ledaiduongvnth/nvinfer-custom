@@ -19,9 +19,8 @@ add_executable(
         gstnvinfer_meta_utils.h
         gstnvinfer_property_parser.cpp
         gstnvinfer_property_parser.h
-
-
-
+        aligner.h
+        aligner.cpp
 )
 
 target_link_libraries(

@@ -1087,6 +1087,8 @@ get_converted_mat (GstNvInferOnnx * nvinfer, NvBufSurface *src_surf, gint idx,
     gint src_width = GST_ROUND_DOWN_2((unsigned int)crop_rect_params->width);
     gint src_height = GST_ROUND_DOWN_2((unsigned int)crop_rect_params->height);
 
+    nvinfer->processing_height = input_height;
+    nvinfer->processing_width = input_width;
     /* Maintain aspect ratio */
     double hdest = nvinfer->processing_width * src_height / (double) src_width;
     double wdest = nvinfer->processing_height * src_width / (double) src_height;
@@ -1168,8 +1170,6 @@ get_converted_mat (GstNvInferOnnx * nvinfer, NvBufSurface *src_surf, gint idx,
             cv::Mat (nvinfer->processing_height, nvinfer->processing_width,
                      CV_8UC4, nvinfer->inter_buf->surfaceList[0].mappedAddr.addr[0],
                      nvinfer->inter_buf->surfaceList[0].pitch);
-    printf("---------------Jump inside con_mat------------\n");
-
 #if (CV_MAJOR_VERSION >= 4)
     cv::cvtColor (in_mat, *nvinfer->cvmat, cv::COLOR_RGBA2BGR);
 #else
@@ -1452,135 +1452,6 @@ convert_batch_and_push_to_input_thread (GstNvInferOnnx *nvinfer,
   return TRUE;
 }
 
-/* Process entire frames in the batched buffer. */
-static GstFlowReturn
-gst_nvinfer_process_full_frame (GstNvInferOnnx * nvinfer, GstBuffer * inbuf,
-    NvBufSurface * in_surf)
-{
-  NvOSD_RectParams rect_params;
-  NvDsBatchMeta *batch_meta = NULL;
-  guint num_filled = 0;
-  std::unique_ptr<GstNvInferOnnxBatch> batch = nullptr;
-  GstBuffer *conv_gst_buf = nullptr;
-  GstFlowReturn flow_ret;
-  GstNvInferOnnxMemory *memory = nullptr;
-  gdouble scale_ratio_x, scale_ratio_y;
-  gboolean skip_batch;
-
-  /* Process batch only when interval_counter is 0. */
-  skip_batch = (nvinfer->interval_counter++ % (nvinfer->interval + 1) > 0);
-
-  if (skip_batch) {
-    return GST_FLOW_OK;
-  }
-
-  if (((in_surf->memType == NVBUF_MEM_DEFAULT || in_surf->memType == NVBUF_MEM_CUDA_DEVICE) &&
-       ((int)in_surf->gpuId != (int)nvinfer->gpu_id)) ||
-      (((int)in_surf->gpuId == (int)nvinfer->gpu_id) && (in_surf->memType == NVBUF_MEM_SYSTEM)))  {
-    GST_ELEMENT_ERROR (nvinfer, RESOURCE, FAILED,
-        ("Memory Compatibility Error:Input surface gpu-id doesnt match with configured gpu-id for element,"
-         " please allocate input using unified memory, or use same gpu-ids OR,"
-         " if same gpu-ids are used ensure appropriate Cuda memories are used"),
-        ("surface-gpu-id=%d,%s-gpu-id=%d",in_surf->gpuId,GST_ELEMENT_NAME(nvinfer),
-         nvinfer->gpu_id)); \
-      return GST_FLOW_ERROR;
-  }
-
-
-  batch_meta = gst_buffer_get_nvds_batch_meta (inbuf);
-  if (batch_meta == nullptr) {
-    GST_ELEMENT_ERROR (nvinfer, STREAM, FAILED,
-        ("NvDsBatchMeta not found for input buffer."), (NULL));
-    return GST_FLOW_ERROR;
-  }
-  num_filled = batch_meta->num_frames_in_batch;
-
-  /* Processing on full frames. Iterate through all the frames in the batched
-   * input buffer. */
-  for (guint i = 0; i < num_filled; i++) {
-    guint idx;
-
-    /* No existing GstNvInferOnnxBatch structure. Allocate a new structure,
-     * acquire a buffer from our internal pool for conversions. */
-    if (batch == nullptr) {
-      batch.reset (new GstNvInferOnnxBatch);
-      batch->push_buffer = FALSE;
-      batch->inbuf = inbuf;
-      batch->inbuf_batch_num = nvinfer->current_batch_num;
-
-      flow_ret =
-          gst_buffer_pool_acquire_buffer (nvinfer->pool, &conv_gst_buf,
-          nullptr);
-      if (flow_ret != GST_FLOW_OK) {
-        return flow_ret;
-      }
-      memory = gst_nvinfer_buffer_get_memory (conv_gst_buf);
-      if (!memory) {
-        return GST_FLOW_ERROR;
-      }
-      batch->conv_buf = conv_gst_buf;
-    }
-
-    idx = batch->frames.size ();
-    /* Scale the entire frame to network resolution. */
-    rect_params.left = 0;
-    rect_params.top = 0;
-    rect_params.width = in_surf->surfaceList[i].width;
-    rect_params.height = in_surf->surfaceList[i].height;
-
-    /* Scale and convert the buffer. */
-    if (get_converted_buffer (nvinfer, in_surf, in_surf->surfaceList + i,
-            &rect_params, memory->surf, memory->surf->surfaceList + idx,
-            scale_ratio_x, scale_ratio_y,
-            memory->frame_memory_ptrs[idx]) != GST_FLOW_OK) {
-      GST_ELEMENT_ERROR (nvinfer, STREAM, FAILED, ("Buffer conversion failed"),
-          (NULL));
-      return GST_FLOW_ERROR;
-    }
-
-      gdouble ratio = 1;
-//Crop and scale the object
-      printf("------------Jump con_mat------------\n");
-
-      if (get_converted_mat (nvinfer,in_surf, idx, &rect_params,
-                             ratio, 1920,
-                             1080) != GST_FLOW_OK) {
-          //Error in conversion, skip processing on object.
-          continue;
-      }
-
-      cv::imwrite("/mnt/hdd/CLionProjects/face_ds/a.png", *nvinfer->cvmat);
-
-    /* Adding a frame to the current batch. Set the frames members. */
-    GstNvInferOnnxFrame frame;
-    frame.converted_frame_ptr = memory->frame_memory_ptrs[idx];
-    frame.scale_ratio_x = scale_ratio_x;
-    frame.scale_ratio_y = scale_ratio_y;
-    frame.obj_meta = nullptr;
-    frame.frame_meta = nvds_get_nth_frame_meta (batch_meta->frame_meta_list, i);
-    frame.frame_num = frame.frame_meta->frame_num;
-    frame.batch_index = i;
-    //frame.history = nullptr;
-    frame.input_surf_params = in_surf->surfaceList + i;
-    batch->frames.push_back (frame);
-
-    /* Submit batch if the batch size has reached max_batch_size or
-     * if this is the last frame in the input batched buffer. */
-    if (batch->frames.size () == nvinfer->max_batch_size || i == num_filled - 1) {
-      if (!convert_batch_and_push_to_input_thread (nvinfer, batch.get(), memory)) {
-        return GST_FLOW_ERROR;
-      }
-
-      /* Batch submitted. Set batch to nullptr so that a new GstNvInferOnnxBatch
-       * structure can be allocated if required. */
-      batch.release ();
-      conv_gst_buf = nullptr;
-      nvinfer->tmp_surf.numFilled = 0;
-    }
-  }
-  return GST_FLOW_OK;
-}
-
 /* The object history map should be trimmed periodically to keep the map size
  * in check. */
 static void
@@ -1666,6 +1537,7 @@ should_infer_object (GstNvInferOnnx * nvinfer, GstBuffer * inbuf,
 
   return TRUE;
 }
+#define NVDS_USER_FRAME_META_EXAMPLE (nvds_get_user_meta_type("NVIDIA.NVINFER.USER_META"))
 
 /* Process on objects detected by upstream detectors.
  *
@@ -1844,7 +1716,30 @@ gst_nvinfer_process_objects (GstNvInferOnnx * nvinfer, GstBuffer * inbuf,
         batch->conv_buf = conv_gst_buf;
       }
       idx = batch->frames.size ();
-
+        gdouble ratio = 1;
+        gint width = object_meta->rect_params.width;
+        gint height = object_meta->rect_params.height;
+        if (get_converted_mat (nvinfer,in_surf, idx, &object_meta->rect_params,ratio, width,height) != GST_FLOW_OK) {
+            continue;
+        }
+        NvDsUserMeta *user_meta = NULL;
+        gint16 *user_meta_data = NULL;
+        std::vector<cv::Point2f> landmarks;
+        for (NvDsMetaList *l_user_meta = frame_meta->frame_user_meta_list; l_user_meta != NULL; l_user_meta = l_user_meta->next) {
+            user_meta = (NvDsUserMeta *) (l_user_meta->data);
+            if(user_meta->base_meta.meta_type == NVDS_USER_FRAME_META_EXAMPLE)
+            {
+                user_meta_data = (gint16 *)user_meta->user_meta_data;
+                for(int i = 0; i < 5; i++) {
+                    cv::Point2f p1 = cv::Point(cv::Point((float)user_meta_data[i*2] - object_meta->rect_params.left, (float)user_meta_data[i*2+1] - object_meta->rect_params.top));
+                    landmarks.emplace_back(p1);
+                    cv::circle(*nvinfer->cvmat, cv::Point((float)user_meta_data[i*2] - object_meta->rect_params.left, (float)user_meta_data[i*2+1] - object_meta->rect_params.top), 2, cv::Scalar(255, 0, 0), 2);
+                }
+            }
+        }
+        cv::Mat faceAligned;
+        nvinfer->aligner.AlignFace(*nvinfer->cvmat, landmarks, &faceAligned);
+        cv::imwrite("/mnt/hdd/CLionProjects/face_ds/a.png", faceAligned);
       /* Crop, scale and convert the buffer. */
       if (get_converted_buffer (nvinfer, in_surf,
               in_surf->surfaceList + frame_meta->batch_id,
@@ -1955,11 +1850,7 @@ gst_nvinfer_submit_input_buffer (GstBaseTransform * btrans,
 
   nvds_set_input_system_timestamp(inbuf, GST_ELEMENT_NAME(nvinfer));
 
-  if (true) {
-   flow_ret = gst_nvinfer_process_full_frame (nvinfer, inbuf, in_surf);
-  } else {
-    flow_ret = gst_nvinfer_process_objects (nvinfer, inbuf, in_surf);
-  }
+  flow_ret = gst_nvinfer_process_objects (nvinfer, inbuf, in_surf);
 
   /* Unmap the input buffer contents. */
   if (in_map_info.data)
