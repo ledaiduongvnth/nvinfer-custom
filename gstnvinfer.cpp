@@ -1854,7 +1854,8 @@ gst_nvinfer_process_objects (GstNvInfer * nvinfer, GstBuffer * inbuf,
             }
         }
         cv::Mat faceAligned;
-        nvinfer->aligner.AlignFace(*nvinfer->cvmat, landmarks, &faceAligned);
+        mirror::Aligner aligner;
+        aligner.AlignFace(*nvinfer->cvmat, landmarks, &faceAligned);
         cv::imwrite("/mnt/hdd/CLionProjects/face_ds/a.png", faceAligned);
       /* Crop, scale and convert the buffer. */
       if (get_converted_buffer (nvinfer, in_surf,

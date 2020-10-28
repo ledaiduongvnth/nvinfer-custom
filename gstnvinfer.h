@@ -312,7 +312,6 @@ struct _GstNvInfer
  NvBufSurface *inter_buf;
  // Host buffer to store RGB data for use by algorithm
  void *host_rgb_buf;
- mirror::Aligner aligner;
 };
 
 /* GStreamer boilerplate. */
