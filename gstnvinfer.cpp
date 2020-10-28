@@ -35,6 +35,8 @@ GST_DEBUG_CATEGORY (gst_nvinfer_debug);
 #define GST_CAT_DEFAULT gst_nvinfer_debug
 
 #define INTERNAL_BUF_POOL_SIZE 3
+#define RGB_BYTES_PER_PIXEL 3
+#define NVDS_USER_FRAME_META_EXAMPLE (nvds_get_user_meta_type("NVIDIA.NVINFER.USER_META"))
 
 #define NVDSINFER_CTX_OUT_POOL_SIZE_FLOW_META 6
 
@@ -104,6 +106,12 @@ guint gst_nvinfer_signals[LAST_SIGNAL] = { 0 };
 /* Define our element type. Standard GObject/GStreamer boilerplate stuff */
 #define gst_nvinfer_parent_class parent_class
 G_DEFINE_TYPE (GstNvInfer, gst_nvinfer, GST_TYPE_BASE_TRANSFORM);
+#define CHECK_CUDA_STATUS(cuda_status,error_str) do { \
+  if ((cuda_status) != cudaSuccess) { \
+    g_print ("Error: %s in %s at line %d (%s)\n", \
+        error_str, __FILE__, __LINE__, cudaGetErrorName(cuda_status)); \
+  } \
+} while (0)
 
 /* Implementation of the GObject/GstBaseTransform interfaces. */
 static void gst_nvinfer_finalize (GObject * object);
@@ -749,6 +757,52 @@ gst_nvinfer_start (GstBaseTransform * btrans)
   }
 
   nvinfer->interval_counter = 0;
+  nvinfer->processing_height = 1080;
+  nvinfer->processing_width = 1920;
+
+    if (nvinfer->inter_buf)
+        NvBufSurfaceDestroy (nvinfer->inter_buf);
+    nvinfer->inter_buf = NULL;
+
+    /* An intermediate buffer for NV12/RGBA to BGR conversion  will be
+     * required. Can be skipped if custom algorithm can work directly on NV12/RGBA. */
+    NvBufSurfaceCreateParams create_params;
+
+    create_params.gpuId  = nvinfer->gpu_id;
+    create_params.width  = nvinfer->processing_width;
+    create_params.height = nvinfer->processing_height;
+    create_params.size = 0;
+    create_params.colorFormat = NVBUF_COLOR_FORMAT_RGBA;
+    create_params.layout = NVBUF_LAYOUT_PITCH;
+#ifdef __aarch64__
+    create_params.memType = NVBUF_MEM_DEFAULT;
+#else
+    create_params.memType = NVBUF_MEM_CUDA_UNIFIED;
+#endif
+
+    if (NvBufSurfaceCreate (&nvinfer->inter_buf, 1,
+                            &create_params) != 0) {
+        GST_ERROR ("Error: Could not allocate internal buffer for custominfer");
+    }
+
+
+    /* Create host memory for storing converted/scaled interleaved RGB data */
+    CHECK_CUDA_STATUS (cudaMallocHost (&nvinfer->host_rgb_buf,
+                                       nvinfer->processing_width * nvinfer->processing_height *
+                                       RGB_BYTES_PER_PIXEL), "Could not allocate cuda host buffer");
+
+    GST_DEBUG_OBJECT (nvinfer, "allocated cuda buffer %p \n",
+                      nvinfer->host_rgb_buf);
+
+    /* CV Mat containing interleaved RGB data. This call does not allocate memory.
+     * It uses host_rgb_buf as data. */
+    nvinfer->cvmat =
+            new cv::Mat (nvinfer->processing_height, nvinfer->processing_width,
+                         CV_8UC3, nvinfer->host_rgb_buf,
+                         nvinfer->processing_width * RGB_BYTES_PER_PIXEL);
+
+    if (!nvinfer->cvmat)
+        printf("CVmat error\n");
 
   /* Should not infer on objects smaller than MIN_INPUT_OBJECT_WIDTH x MIN_INPUT_OBJECT_HEIGHT
    * since it will cause hardware scaling issues. */
@@ -1002,6 +1056,155 @@ gst_nvinfer_stop (GstBaseTransform * btrans)
   g_queue_free (nvinfer->input_queue);
 
   return TRUE;
+}
+
+
+/**
+ * Scale the entire frame to the processing resolution maintaining aspect ratio.
+ * Or crop and scale objects to the processing resolution maintaining the aspect
+ * ratio. Remove the padding required by hardware and convert from RGBA to RGB
+ * using openCV. These steps can be skipped if the algorithm can work with
+ * padded data and/or can work with RGBA.
+ */
+static GstFlowReturn
+get_converted_mat (GstNvInfer * nvinfer, NvBufSurface *src_surf, gint idx,
+                   NvOSD_RectParams * crop_rect_params, gdouble & ratio, gint input_width,
+                   gint input_height)
+{
+    NvBufSurfTransform_Error err;
+    NvBufSurfTransformConfigParams transform_config_params;
+    NvBufSurfTransformParams transform_params;
+    NvBufSurfTransformRect src_rect;
+    NvBufSurfTransformRect dst_rect;
+    NvBufSurface ip_surf;
+    cv::Mat in_mat;
+    ip_surf = *src_surf;
+
+    ip_surf.numFilled = ip_surf.batchSize = 1;
+    ip_surf.surfaceList = &(src_surf->surfaceList[idx]);
+
+    gint src_left = GST_ROUND_UP_2((unsigned int)crop_rect_params->left);
+    gint src_top = GST_ROUND_UP_2((unsigned int)crop_rect_params->top);
+    gint src_width = GST_ROUND_DOWN_2((unsigned int)crop_rect_params->width);
+    gint src_height = GST_ROUND_DOWN_2((unsigned int)crop_rect_params->height);
+
+    nvinfer->processing_height = input_height;
+    nvinfer->processing_width = input_width;
+    /* Maintain aspect ratio */
+    double hdest = nvinfer->processing_width * src_height / (double) src_width;
+    double wdest = nvinfer->processing_height * src_width / (double) src_height;
+    guint dest_width, dest_height;
+
+    if (hdest <= nvinfer->processing_height) {
+        dest_width = nvinfer->processing_width;
+        dest_height = hdest;
+    } else {
+        dest_width = wdest;
+        dest_height = nvinfer->processing_height;
+    }
+
+    /* Configure transform session parameters for the transformation */
+    transform_config_params.compute_mode = NvBufSurfTransformCompute_Default;
+    transform_config_params.gpu_id = nvinfer->gpu_id;
+    transform_config_params.cuda_stream = nvinfer->convertStream;
+
+    /* Set the transform session parameters for the conversions executed in this
+     * thread. */
+    err = NvBufSurfTransformSetSessionParams (&transform_config_params);
+    if (err != NvBufSurfTransformError_Success) {
+        GST_ELEMENT_ERROR (nvinfer, STREAM, FAILED,
+                           ("NvBufSurfTransformSetSessionParams failed with error %d", err), (NULL));
+        goto error;
+    }
+
+    /* Calculate scaling ratio while maintaining aspect ratio */
+    ratio = MIN (1.0 * dest_width/ src_width, 1.0 * dest_height / src_height);
+
+    if ((crop_rect_params->width == 0) || (crop_rect_params->height == 0)) {
+        GST_ELEMENT_ERROR (nvinfer, STREAM, FAILED,
+                           ("%s:crop_rect_params dimensions are zero",__func__), (NULL));
+        goto error;
+    }
+
+#ifdef __aarch64__
+    if (ratio <= 1.0 / 16 || ratio >= 16.0) {
+    /* Currently cannot scale by ratio > 16 or < 1/16 for Jetson */
+    goto error;
+  }
+#endif
+    /* Set the transform ROIs for source and destination */
+    src_rect = {(guint)src_top, (guint)src_left, (guint)src_width, (guint)src_height};
+    dst_rect = {0, 0, (guint)dest_width, (guint)dest_height};
+
+    /* Set the transform parameters */
+    transform_params.src_rect = &src_rect;
+    transform_params.dst_rect = &dst_rect;
+    transform_params.transform_flag =
+            NVBUFSURF_TRANSFORM_FILTER | NVBUFSURF_TRANSFORM_CROP_SRC |
+            NVBUFSURF_TRANSFORM_CROP_DST;
+    transform_params.transform_filter = NvBufSurfTransformInter_Default;
+
+    /* Memset the memory */
+    NvBufSurfaceMemSet (nvinfer->inter_buf, 0, 0, 0);
+
+    GST_DEBUG_OBJECT (nvinfer, "Scaling and converting input buffer\n");
+
+    /* Transformation scaling+format conversion if any. */
+    err = NvBufSurfTransform (&ip_surf, nvinfer->inter_buf, &transform_params);
+    if (err != NvBufSurfTransformError_Success) {
+        GST_ELEMENT_ERROR (nvinfer, STREAM, FAILED,
+                           ("NvBufSurfTransform failed with error %d while converting buffer", err),
+                           (NULL));
+        goto error;
+    }
+    /* Map the buffer so that it can be accessed by CPU */
+    if (NvBufSurfaceMap (nvinfer->inter_buf, 0, 0, NVBUF_MAP_READ) != 0){
+        goto error;
+    }
+
+    /* Cache the mapped data for CPU access */
+    NvBufSurfaceSyncForCpu (nvinfer->inter_buf, 0, 0);
+
+    /* Use openCV to remove padding and convert RGBA to BGR. Can be skipped if
+     * algorithm can handle padded RGBA data. */
+    in_mat =
+            cv::Mat (nvinfer->processing_height, nvinfer->processing_width,
+                     CV_8UC4, nvinfer->inter_buf->surfaceList[0].mappedAddr.addr[0],
+                     nvinfer->inter_buf->surfaceList[0].pitch);
+#if (CV_MAJOR_VERSION >= 4)
+    cv::cvtColor (in_mat, *nvinfer->cvmat, cv::COLOR_RGBA2BGR);
+#else
+    cv::cvtColor (in_mat, *nvinfer->cvmat, CV_RGBA2BGR);
+#endif
+
+    if (NvBufSurfaceUnMap (nvinfer->inter_buf, 0, 0)){
+        goto error;
+    }
+
+#ifdef __aarch64__
+    /* To use the converted buffer in CUDA, create an EGLImage and then use
+   * CUDA-EGL interop APIs */
+  if (USE_EGLIMAGE) {
+    if (NvBufSurfaceMapEglImage (custominfer->inter_buf, 0) !=0 ) {
+      goto error;
+    }
+
+    /* custominfer->inter_buf->surfaceList[0].mappedAddr.eglImage
+     * Use interop APIs cuGraphicsEGLRegisterImage and
+     * cuGraphicsResourceGetMappedEglFrame to access the buffer in CUDA */
+
+    /* Destroy the EGLImage */
+    NvBufSurfaceUnMapEglImage (custominfer->inter_buf, 0);
+  }
+#endif
+
+    /* We will first convert only the Region of Interest (the entire frame or the
+     * object bounding box) to RGB and then scale the converted RGB frame to
+     * processing resolution. */
+    return GST_FLOW_OK;
+
+    error:
+    return GST_FLOW_ERROR;
 }
 
 /**
@@ -1629,7 +1832,30 @@ gst_nvinfer_process_objects (GstNvInfer * nvinfer, GstBuffer * inbuf,
         batch->conv_buf = conv_gst_buf;
       }
       idx = batch->frames.size ();
-
+        gdouble ratio = 1;
+        gint width = object_meta->rect_params.width;
+        gint height = object_meta->rect_params.height;
+        if (get_converted_mat (nvinfer,in_surf, idx, &object_meta->rect_params,ratio, width,height) != GST_FLOW_OK) {
+            continue;
+        }
+        NvDsUserMeta *user_meta = NULL;
+        gint16 *user_meta_data = NULL;
+        std::vector<cv::Point2f> landmarks;
+        for (NvDsMetaList *l_user_meta = frame_meta->frame_user_meta_list; l_user_meta != NULL; l_user_meta = l_user_meta->next) {
+            user_meta = (NvDsUserMeta *) (l_user_meta->data);
+            if(user_meta->base_meta.meta_type == NVDS_USER_FRAME_META_EXAMPLE)
+            {
+                user_meta_data = (gint16 *)user_meta->user_meta_data;
+                for(int i = 0; i < 5; i++) {
+                    cv::Point2f p1 = cv::Point(cv::Point((float)user_meta_data[i*2] - object_meta->rect_params.left, (float)user_meta_data[i*2+1] - object_meta->rect_params.top));
+                    landmarks.emplace_back(p1);
+                    cv::circle(*nvinfer->cvmat, cv::Point((float)user_meta_data[i*2] - object_meta->rect_params.left, (float)user_meta_data[i*2+1] - object_meta->rect_params.top), 2, cv::Scalar(255, 0, 0), 2);
+                }
+            }
+        }
+        cv::Mat faceAligned;
+        nvinfer->aligner.AlignFace(*nvinfer->cvmat, landmarks, &faceAligned);
+        cv::imwrite("/mnt/hdd/CLionProjects/face_ds/a.png", faceAligned);
       /* Crop, scale and convert the buffer. */
       if (get_converted_buffer (nvinfer, in_surf,
               in_surf->surfaceList + frame_meta->batch_id,

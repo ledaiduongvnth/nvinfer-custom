@@ -14,6 +14,7 @@
 
 #include <gst/base/gstbasetransform.h>
 #include <gst/video/video.h>
+#include <opencv2/opencv.hpp>
 
 #include <set>
 #include <unordered_map>
@@ -29,6 +30,7 @@
 #include "gstnvdsmeta.h"
 
 #include "nvtx3/nvToolsExt.h"
+#include "aligner.h"
 
 /* Package and library details required for plugin_init */
 #define PACKAGE "nvinfer"
@@ -300,6 +302,17 @@ struct _GstNvInfer
   nvtxDomainHandle_t nvtx_domain;
 
   GstNvInferImpl *impl;
+    // Resolution at which frames/objects should be processed
+ gint processing_width;
+ gint processing_height;
+
+ cv::Mat *cvmat;
+
+ // the intermediate scratch buffer for conversions RGBA
+ NvBufSurface *inter_buf;
+ // Host buffer to store RGB data for use by algorithm
+ void *host_rgb_buf;
+ mirror::Aligner aligner;
 };
 
 /* GStreamer boilerplate. */

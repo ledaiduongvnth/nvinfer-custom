@@ -15,7 +15,7 @@ endif
 
 CXX:= g++
 SRCS:= gstnvinfer.cpp  gstnvinfer_allocator.cpp gstnvinfer_property_parser.cpp \
-       gstnvinfer_meta_utils.cpp gstnvinfer_impl.cpp
+       gstnvinfer_meta_utils.cpp gstnvinfer_impl.cpp aligner.cpp
 INCS:= $(wildcard *.h)
 LIB:=libnvdsgst_infer.so
 
@@ -38,7 +38,7 @@ LIBS+= -L$(LIB_INSTALL_DIR) -lnvdsgst_helper -lnvdsgst_meta -lnvds_meta \
 
 OBJS:= $(SRCS:.cpp=.o)
 
-PKGS:= gstreamer-1.0 gstreamer-base-1.0 gstreamer-video-1.0
+PKGS:= gstreamer-1.0 gstreamer-base-1.0 gstreamer-video-1.0 opencv
 CFLAGS+=$(shell pkg-config --cflags $(PKGS))
 LIBS+=$(shell pkg-config --libs $(PKGS))
 
