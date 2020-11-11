@@ -305,6 +305,14 @@ struct _GstNvInfer
   nvtxDomainHandle_t nvtx_domain;
 
   GstNvInferImpl *impl;
+
+    // the intermediate scratch buffer for conversions RGBA
+    NvBufSurface *inter_buf;
+
+    // OpenCV mat containing RGB data
+    cv::Mat *cvmat;
+
+
 };
 
 /* GStreamer boilerplate. */
