@@ -15,7 +15,7 @@ endif
 
 CXX:= g++
 SRCS:= gstnvinfer.cpp  gstnvinfer_allocator.cpp gstnvinfer_property_parser.cpp \
-       gstnvinfer_meta_utils.cpp gstnvinfer_impl.cpp aligner.cpp
+       gstnvinfer_meta_utils.cpp gstnvinfer_impl.cpp
 INCS:= $(wildcard *.h)
 LIB:=libnvdsgst_infer.so
 

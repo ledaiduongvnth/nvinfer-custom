@@ -30,7 +30,6 @@
 #include "gstnvdsmeta.h"
 
 #include "nvtx3/nvToolsExt.h"
-#include "aligner.h"
 
 /* Package and library details required for plugin_init */
 #define PACKAGE "nvinfer"
