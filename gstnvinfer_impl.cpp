@@ -63,6 +63,8 @@ DsNvInferImpl::~DsNvInferImpl ()
   if (m_InitParams) {
     delete[]m_InitParams->perClassDetectionParams;
     g_strfreev (m_InitParams->outputLayerNames);
+    g_strfreev (m_InitParams->outputIOFormats);
+    g_strfreev (m_InitParams->layerDevicePrecisions);
   }
 }
 

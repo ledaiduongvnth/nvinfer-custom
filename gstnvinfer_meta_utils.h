@@ -13,7 +13,8 @@
 #include "gstnvinfer_impl.h"
 
 void attach_metadata_detector (GstNvInfer * nvinfer, GstMiniObject * tensor_out_object,
-        GstNvInferFrame & frame, NvDsInferDetectionOutput & detection_output);
+        GstNvInferFrame & frame, NvDsInferDetectionOutput & detection_output,
+        float segmentationThreshold);
 
 void attach_metadata_classifier (GstNvInfer * nvinfer, GstMiniObject * tensor_out_object,
         GstNvInferFrame & frame, GstNvInferObjectInfo & object_info);

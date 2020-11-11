@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018-2019, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2018-2020, NVIDIA CORPORATION.  All rights reserved.
  *
  * NVIDIA Corporation and its licensors retain all intellectual property
  * and proprietary rights in and to this software, related documentation
@@ -9,6 +9,7 @@
  *
  */
 
+#include <cmath>
 #include <cstring>
 #include "gstnvinfer_meta_utils.h"
 
@@ -34,7 +35,7 @@ get_element_size (NvDsInferDataType data_type)
  */
 void
 attach_metadata_detector (GstNvInfer * nvinfer, GstMiniObject * tensor_out_object,
-    GstNvInferFrame & frame, NvDsInferDetectionOutput & detection_output)
+    GstNvInferFrame & frame, NvDsInferDetectionOutput & detection_output, float segmentationThreshold)
 {
   static gchar font_name[] = "Serif";
   NvDsObjectMeta *obj_meta = NULL;
@@ -89,7 +90,8 @@ attach_metadata_detector (GstNvInfer * nvinfer, GstMiniObject * tensor_out_objec
     NvOSD_RectParams & rect_params = obj_meta->rect_params;
     NvOSD_TextParams & text_params = obj_meta->text_params;
 
-    /* Assign bounding box coordinates. */
+    /* Assign bounding box coordinates. These can be overwritten if tracker
+     * component is present in the pipeline */
     rect_params.left = obj.left;
     rect_params.top = obj.top;
     rect_params.width = obj.width;
@@ -99,6 +101,13 @@ attach_metadata_detector (GstNvInfer * nvinfer, GstMiniObject * tensor_out_objec
       rect_params.left += parent_obj_meta->rect_params.left;
       rect_params.top += parent_obj_meta->rect_params.top;
     }
+
+    /* Preserve original positional bounding box coordinates of detector in the
+     * frame so that those can be accessed after tracker */
+    obj_meta->detector_bbox_info.org_bbox_coords.left = rect_params.left;
+    obj_meta->detector_bbox_info.org_bbox_coords.top = rect_params.top;
+    obj_meta->detector_bbox_info.org_bbox_coords.width = rect_params.width;
+    obj_meta->detector_bbox_info.org_bbox_coords.height = rect_params.height;
 
     /* Border of width 3. */
     rect_params.border_width = 3;
@@ -129,6 +138,17 @@ attach_metadata_detector (GstNvInfer * nvinfer, GstMiniObject * tensor_out_objec
     text_params.font_params.font_size = 11;
     text_params.font_params.font_color = (NvOSD_ColorParams) {
     1, 1, 1, 1};
+
+    if (nvinfer->output_instance_mask && obj.mask) {
+      float *mask = (float *)g_malloc(obj.mask_size);
+      memcpy(mask, obj.mask, obj.mask_size);
+      obj_meta->mask_params.data = mask;
+      obj_meta->mask_params.size = obj.mask_size;
+      obj_meta->mask_params.threshold = segmentationThreshold;
+      obj_meta->mask_params.width = obj.mask_width;
+      obj_meta->mask_params.height = obj.mask_height;
+    }
+
     nvds_add_obj_meta_to_frame (frame_meta, obj_meta, parent_obj_meta);
   }
   nvds_release_meta_lock (batch_meta);

@@ -69,6 +69,8 @@ extern const int DEFAULT_REINFER_INTERVAL = G_MAXINT;
   (DS_NVINFER_IMPL(nvinfer)->m_InitParams->networkType == NvDsInferNetworkType_Classifier)
 #define IS_SEGMENTATION_INSTANCE(nvinfer) \
   (DS_NVINFER_IMPL(nvinfer)->m_InitParams->networkType == NvDsInferNetworkType_Segmentation)
+#define IS_INSTANCE_SEGMENTATION_INSTANCE(nvinfer) \
+  (DS_NVINFER_IMPL(nvinfer)->m_InitParams->networkType == NvDsInferNetworkType_InstanceSegmentation)
 
 static GQuark _dsmeta_quark = 0;
 
@@ -85,6 +87,7 @@ static GQuark _dsmeta_quark = 0;
 #define DEFAULT_GPU_DEVICE_ID 0
 #define DEFAULT_OUTPUT_WRITE_TO_FILE FALSE
 #define DEFAULT_OUTPUT_TENSOR_META FALSE
+#define DEFAULT_OUTPUT_INSTANCE_MASK FALSE
 
 /* By default NVIDIA Hardware allocated memory flows through the pipeline. We
  * will be processing on this type of memory only. */
@@ -302,6 +305,13 @@ gst_nvinfer_class_init (GstNvInferClass * klass)
           (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
               GST_PARAM_MUTABLE_READY)));
 
+  g_object_class_install_property (gobject_class, PROP_OUTPUT_INSTANCE_MASK,
+      g_param_spec_boolean ("output-instance-mask", "Output Instance Mask",
+          "Instance mask expected in network output and attach it to metadata",
+          DEFAULT_OUTPUT_INSTANCE_MASK,
+          (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+              GST_PARAM_MUTABLE_READY)));
+
   /** install signal MODEL_UPDATED */
   gst_nvinfer_signals[SIGNAL_MODEL_UPDATED] =
       g_signal_new ("model-updated",
@@ -347,6 +357,7 @@ gst_nvinfer_init (GstNvInfer * nvinfer)
   nvinfer->operate_on_class_ids = new std::vector < gboolean >;
   nvinfer->filter_out_class_ids = new std::set<uint>;
   nvinfer->output_tensor_meta = DEFAULT_OUTPUT_TENSOR_META;
+  nvinfer->output_instance_mask = DEFAULT_OUTPUT_INSTANCE_MASK;
 
   nvinfer->max_batch_size = impl->m_InitParams->maxBatchSize =
       DEFAULT_BATCH_SIZE;
@@ -507,6 +518,9 @@ gst_nvinfer_set_property (GObject * object, guint prop_id,
     case PROP_OUTPUT_TENSOR_META:
       nvinfer->output_tensor_meta = g_value_get_boolean (value);
       break;
+    case PROP_OUTPUT_INSTANCE_MASK:
+      nvinfer->output_instance_mask = g_value_get_boolean (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -581,6 +595,9 @@ gst_nvinfer_get_property (GObject * object, guint prop_id,
     case PROP_OUTPUT_TENSOR_META:
       g_value_set_boolean (value, nvinfer->output_tensor_meta);
       break;
+    case PROP_OUTPUT_INSTANCE_MASK:
+      g_value_set_boolean (value, nvinfer->output_instance_mask);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -631,6 +648,8 @@ gst_nvinfer_reset_init_params (GstNvInfer * nvinfer)
 
   delete prev_params->perClassDetectionParams;
   g_strfreev (prev_params->outputLayerNames);
+  g_strfreev (prev_params->outputIOFormats);
+  g_strfreev (prev_params->layerDevicePrecisions);
 }
 
 /**
@@ -745,6 +764,15 @@ gst_nvinfer_start (GstBaseTransform * btrans)
     GST_ELEMENT_ERROR (nvinfer, LIBRARY, SETTINGS,
         ("Configuration file parsing failed"),
         ("Config file path: %s", nvinfer->config_file_path));
+    return FALSE;
+  }
+
+  if (nvinfer->output_instance_mask == TRUE &&
+                 init_params->clusterMode != NVDSINFER_CLUSTER_NONE)
+  {
+    GST_ELEMENT_ERROR (nvinfer, LIBRARY, SETTINGS,
+        ("Instance mask output not supported with cluster mode %d",
+                               init_params->clusterMode), (nullptr));
     return FALSE;
   }
 
@@ -1567,9 +1595,9 @@ gst_nvinfer_process_objects (GstNvInfer * nvinfer, GstBuffer * inbuf,
             /* Let the output thread know to attach latest available classifier
              * metadata for this object. */
             batch->objs_pending_meta_attach.emplace_back(obj_history, object_meta);
+            continue;
           }
         }
-        continue;
       }
 
 
@@ -1876,6 +1904,7 @@ gst_nvinfer_output_loop (gpointer data)
 {
   GstNvInfer *nvinfer = GST_NVINFER (data);
   DsNvInferImpl *impl = DS_NVINFER_IMPL (nvinfer);
+  NvDsInferContextInitParams *init_params = impl->m_InitParams.get ();
   NvDsInferStatus status = NVDSINFER_SUCCESS;
   nvtxEventAttributes_t eventAttrib = {0};
   eventAttrib.version = NVTX_VERSION;
@@ -2023,9 +2052,9 @@ gst_nvinfer_output_loop (gpointer data)
           obj_history->under_inference = FALSE;
       }
 
-      if (IS_DETECTOR_INSTANCE (nvinfer)) {
+      if (IS_DETECTOR_INSTANCE (nvinfer) || IS_INSTANCE_SEGMENTATION_INSTANCE (nvinfer)) {
         attach_metadata_detector (nvinfer, GST_MINI_OBJECT (tensor_out_object.get()),
-                frame, frame_output.detectionOutput);
+                frame, frame_output.detectionOutput, init_params->segmentationThreshold);
       } else if (IS_CLASSIFIER_INSTANCE (nvinfer)) {
         NvDsInferClassificationOutput &classification_output = frame_output.classificationOutput;
         GstNvInferObjectInfo new_info;

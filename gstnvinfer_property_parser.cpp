@@ -282,6 +282,15 @@ gst_nvinfer_parse_class_attrs (GKeyFile * key_file, gchar * group,
             detection_params.nmsIOUThreshold, group);
         goto done;
       }
+    } else if (!g_strcmp0(*key, CONFIG_GROUP_INFER_CLASS_ATTRS_TOP_K)) {
+        detection_params.topK = g_key_file_get_integer(key_file, group,
+        CONFIG_GROUP_INFER_CLASS_ATTRS_TOP_K, &error);
+            CHECK_ERROR(error);
+            if(detection_params.topK < 0) {
+                g_printerr("Error: Invalid topk value %d specified for group %s."
+                " topk should be greater than of equal to '0'\n", detection_params.topK, group);
+                goto done;
+            }
     } else {
       g_printerr ("Unknown key '%s' for group [%s]\n", *key,
           CONFIG_GROUP_PROPERTY);
@@ -348,6 +357,11 @@ gst_nvinfer_parse_other_attribute (GstNvInfer * nvinfer,
     if (g_key_file_get_boolean (key_file, group_name,
             CONFIG_GROUP_INFER_OUTPUT_TENSOR_META, &error))
       nvinfer->output_tensor_meta = TRUE;
+    CHECK_ERROR (error);
+  } else if (!g_strcmp0 (key, CONFIG_GROUP_INFER_OUTPUT_INSTANCE_MASK)) {
+    if (g_key_file_get_boolean (key_file, group_name,
+            CONFIG_GROUP_INFER_OUTPUT_INSTANCE_MASK, &error))
+      nvinfer->output_instance_mask = TRUE;
     CHECK_ERROR (error);
   } else if (!g_strcmp0 (key, CONFIG_GROUP_INFER_SECONDARY_REINFER_INTERVAL)) {
     nvinfer->secondary_reinfer_interval =
@@ -480,7 +494,10 @@ gst_nvinfer_parse_other_attribute (GstNvInfer * nvinfer,
         goto done;
     }
     nvinfer->transform_params.transform_filter = (NvBufSurfTransform_Inter) val;
-  }
+  } else {
+      g_printerr ("Unknown or legacy key specified '%s' for group [%s]\n", key,
+          CONFIG_GROUP_PROPERTY);
+    }
 
   ret = TRUE;
 
@@ -508,21 +525,6 @@ gst_nvinfer_parse_props (GstNvInfer * nvinfer,
   assert (init_params != nullptr);
 
   /* Handle legacy key names. */
-  if (g_key_file_has_key (key_file, CONFIG_GROUP_PROPERTY,
-          CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS_LEGACY, nullptr)
-      && !g_key_file_has_key (key_file, CONFIG_GROUP_PROPERTY,
-          CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS, nullptr)) {
-    /* Do not parse here, set the key-value pair with the new key. */
-    gchar *value = g_key_file_get_value (key_file, CONFIG_GROUP_PROPERTY,
-        CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS_LEGACY, &error);
-    CHECK_ERROR (error);
-    g_key_file_set_value (key_file, CONFIG_GROUP_PROPERTY,
-        CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS, value);
-    g_free (value);
-    g_key_file_remove_key (key_file, CONFIG_GROUP_PROPERTY,
-        CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS_LEGACY, nullptr);
-  }
-
   if (g_key_file_has_key (key_file, CONFIG_GROUP_PROPERTY,
           CONFIG_GROUP_INFER_IS_CLASSIFIER_LEGACY, nullptr)
       && !g_key_file_has_key (key_file, CONFIG_GROUP_PROPERTY,
@@ -705,6 +707,17 @@ gst_nvinfer_parse_props (GstNvInfer * nvinfer,
       init_params->numOutputLayers = length;
 
       CHECK_ERROR (error);
+    } else if (!g_strcmp0 (*key, CONFIG_GROUP_INFER_OUTPUT_IO_FORMATS)) {
+        gsize length;
+        init_params->outputIOFormats = g_key_file_get_string_list(key_file, CONFIG_GROUP_PROPERTY,
+        CONFIG_GROUP_INFER_OUTPUT_IO_FORMATS, &length, &error);
+        init_params->numOutputIOFormats = length;
+    } else if (!g_strcmp0 (*key, CONFIG_GROUP_INFER_LAYER_DEVICE_PRECISION)) {
+        gsize length;
+        init_params->layerDevicePrecisions = g_key_file_get_string_list(key_file, CONFIG_GROUP_PROPERTY,
+        CONFIG_GROUP_INFER_LAYER_DEVICE_PRECISION, &length, &error);
+        init_params->numLayerDevicePrecisions = length;
+        CHECK_ERROR(error);
     } else if (!g_strcmp0 (*key, CONFIG_GROUP_INFER_NETWORK_TYPE)) {
       guint val = g_key_file_get_integer (key_file, CONFIG_GROUP_PROPERTY,
           CONFIG_GROUP_INFER_NETWORK_TYPE, &error);
@@ -714,6 +727,7 @@ gst_nvinfer_parse_props (GstNvInfer * nvinfer,
         case NvDsInferNetworkType_Detector:
         case NvDsInferNetworkType_Classifier:
         case NvDsInferNetworkType_Segmentation:
+        case NvDsInferNetworkType_InstanceSegmentation:
         case NvDsInferNetworkType_Other:
           init_params->networkType = (NvDsInferNetworkType) val;
           break;
@@ -797,6 +811,13 @@ gst_nvinfer_parse_props (GstNvInfer * nvinfer,
       g_strlcpy (init_params->customBBoxParseFuncName, str,
           _MAX_STR_LENGTH);
       g_free (str);
+    } else if (!g_strcmp0 (*key, CONFIG_GROUP_INFER_CUSTOM_PARSE_BBOX_IM_FUNC)) {
+      gchar *str = g_key_file_get_string (key_file, CONFIG_GROUP_PROPERTY,
+          CONFIG_GROUP_INFER_CUSTOM_PARSE_BBOX_IM_FUNC, &error);
+      CHECK_ERROR (error);
+      g_strlcpy (init_params->customBBoxInstanceMaskParseFuncName, str,
+          _MAX_STR_LENGTH);
+      g_free (str);
     } else if (!g_strcmp0 (*key, CONFIG_GROUP_INFER_CUSTOM_ENGINE_CREATE_FUNC)) {
       gchar *str = g_key_file_get_string (key_file, CONFIG_GROUP_PROPERTY,
           CONFIG_GROUP_INFER_CUSTOM_ENGINE_CREATE_FUNC, &error);
@@ -855,38 +876,103 @@ gst_nvinfer_parse_props (GstNvInfer * nvinfer,
         goto done;
       }
       g_free (str);
-    } else if (!g_strcmp0 (*key, CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS)) {
-      gsize length;
-      gint *int_list = g_key_file_get_integer_list (key_file,
-          CONFIG_GROUP_PROPERTY, CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS,
-          &length, &error);
-      CHECK_ERROR (error);
+    } else if (!g_strcmp0 (*key, CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS_LEGACY)) {
+    /* Parse here if infer-dims has not been set, else ignore input-dims / uff-input-dims */
+    if(!g_key_file_has_key(key_file, CONFIG_GROUP_PROPERTY,
+      CONFIG_GROUP_INFER_INFER_DIMENSIONS, nullptr)) {
+        g_printerr("Warning: 'input-dims' parameter has been deprecated. Use 'infer-dims' instead.\n");
+        gsize length;
+        gint *int_list = g_key_file_get_integer_list (key_file,
+                         CONFIG_GROUP_PROPERTY, CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS_LEGACY,
+                         &length, &error);
+        CHECK_ERROR (error);
 
-      if (length != 4) {
-        g_printerr ("Error. '%s' array length is %lu. Should be 4[a;b;c;ORDER].\n",
-            CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS, length);
-        goto done;
-      }
-      switch (int_list[3]) {
-        case 0:
-            init_params->uffInputOrder = NvDsInferTensorOrder_kNCHW;
-            break;
-        case 1:
-            init_params->uffInputOrder = NvDsInferTensorOrder_kNHWC;
-            break;
-        case 2:
-            init_params->uffInputOrder = NvDsInferTensorOrder_kNC;
-            break;
-        default:
+        if (length != 4) {
+          g_printerr ("Error. '%s' array length is %lu. Should be 4[a;b;c;ORDER].\n",
+                      CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS_LEGACY, length);
+          goto done;
+        }
+        switch (int_list[3]) {
+          case 0:
+          init_params->uffInputOrder = NvDsInferTensorOrder_kNCHW;
+          break;
+          case 1:
+          init_params->uffInputOrder = NvDsInferTensorOrder_kNHWC;
+          break;
+          case 2:
+          init_params->uffInputOrder = NvDsInferTensorOrder_kNC;
+          break;
+          default:
           g_printerr ("Error. Invalid value for '%s', UFF input order :'%d'\n",
-              CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS, int_list[3]);
+                     CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS_LEGACY, int_list[3]);
           goto done;
           break;
-      }
-      init_params->uffDimsCHW = NvDsInferDimsCHW {
-      (unsigned int) int_list[0],
-            (unsigned int) int_list[1], (unsigned int) int_list[2]};
-      g_free (int_list);
+        }
+        init_params->inferInputDims = NvDsInferDimsCHW {(unsigned int) int_list[0],
+                                      (unsigned int) int_list[1], (unsigned int) int_list[2]};
+        g_free (int_list);
+    }
+    else
+      g_printerr("Warning: Ignoring 'input-dims' parameter since 'infer-dims' has been set.\n");
+  } else if (!g_strcmp0 (*key, CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS_LEGACY_V2)) {
+    /* Parse here if infer-dims has not been set, else ignore input-dims / uff-input-dims */
+    if(!g_key_file_has_key(key_file, CONFIG_GROUP_PROPERTY,
+      CONFIG_GROUP_INFER_INFER_DIMENSIONS, nullptr)) {
+        g_printerr("Warning: 'input-dims' parameter has been deprecated. Use 'infer-dims' instead.\n");
+        gsize length;
+        gint *int_list = g_key_file_get_integer_list (key_file,
+                         CONFIG_GROUP_PROPERTY, CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS_LEGACY_V2,
+                         &length, &error);
+        CHECK_ERROR (error);
+
+        if (length != 4) {
+          g_printerr ("Error. '%s' array length is %lu. Should be 4[a;b;c;ORDER].\n",
+                      CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS_LEGACY_V2, length);
+          goto done;
+        }
+        switch (int_list[3]) {
+          case 0:
+          init_params->uffInputOrder = NvDsInferTensorOrder_kNCHW;
+          break;
+          case 1:
+          init_params->uffInputOrder = NvDsInferTensorOrder_kNHWC;
+          break;
+          case 2:
+          init_params->uffInputOrder = NvDsInferTensorOrder_kNC;
+          break;
+          default:
+          g_printerr ("Error. Invalid value for '%s', UFF input order :'%d'\n",
+                     CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS_LEGACY_V2, int_list[3]);
+          goto done;
+          break;
+        }
+        init_params->inferInputDims = NvDsInferDimsCHW {(unsigned int) int_list[0],
+                                      (unsigned int) int_list[1], (unsigned int) int_list[2]};
+        g_free (int_list);
+    }
+    else
+      g_printerr("Warning: Ignoring 'uff-input-dims' parameter since 'infer-dims' has been set.\n");
+  } else if (!g_strcmp0 (*key, CONFIG_GROUP_INFER_UFF_INPUT_ORDER)){
+        gint val = g_key_file_get_integer (key_file, CONFIG_GROUP_PROPERTY,
+          CONFIG_GROUP_INFER_UFF_INPUT_ORDER, &error);
+      CHECK_ERROR (error);
+
+      switch (val) {
+                case 0:
+                    init_params->uffInputOrder = NvDsInferTensorOrder_kNCHW;
+                    break;
+                case 1:
+                    init_params->uffInputOrder = NvDsInferTensorOrder_kNHWC;
+                    break;
+                case 2:
+                    init_params->uffInputOrder = NvDsInferTensorOrder_kNC;
+                    break;
+                default:
+                g_printerr ("Error. Invalid value for '%s', UFF input order :'%d'\n",
+                    CONFIG_GROUP_INFER_UFF_INPUT_ORDER, val);
+                goto done;
+                break;
+        }
     } else if (!g_strcmp0 (*key, CONFIG_GROUP_INFER_UFF_INPUT_BLOB_NAME)) {
       gchar *str = g_key_file_get_string (key_file, CONFIG_GROUP_PROPERTY,
           CONFIG_GROUP_INFER_UFF_INPUT_BLOB_NAME, &error);
@@ -1010,9 +1096,6 @@ gst_nvinfer_parse_props (GstNvInfer * nvinfer,
           nvinfer, key_file, CONFIG_GROUP_PROPERTY, *key, cfg_file_path)) {
         goto done;
       }
-    }else {
-      g_printerr ("Unknown key '%s' for group [%s]\n", *key,
-          CONFIG_GROUP_PROPERTY);
     }
   }
 
@@ -1060,12 +1143,13 @@ gst_nvinfer_parse_config_file (
 
   /* If the nvinfer instance is to be configured as a detector, parse the
    * per-class detection parameters. */
-  if (init_params->networkType == NvDsInferNetworkType_Detector) {
+  if (init_params->networkType == NvDsInferNetworkType_Detector ||
+           init_params->networkType == NvDsInferNetworkType_InstanceSegmentation) {
     /* Set the default detection parameters. */
     NvDsInferDetectionParams detection_params{{DEFAULT_PRE_CLUSTER_THRESHOLD},
         DEFAULT_POST_CLUSTER_THRESHOLD, DEFAULT_EPS,
         DEFAULT_GROUP_THRESHOLD, DEFAULT_MIN_BOXES,
-        DEFAULT_DBSCAN_MIN_SCORE, DEFAULT_NMS_IOU_THRESHOLD};
+        DEFAULT_DBSCAN_MIN_SCORE, DEFAULT_NMS_IOU_THRESHOLD, DEFAULT_TOP_K};
     GstNvInferDetectionFilterParams detection_filter_params{0, 0, 0, 0, 0, 0};
     GstNvInferColorParams color_params;
     color_params.have_border_color = TRUE;

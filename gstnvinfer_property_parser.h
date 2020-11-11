@@ -24,6 +24,7 @@
 #define DEFAULT_MIN_BOXES 0
 #define DEFAULT_DBSCAN_MIN_SCORE 0
 #define DEFAULT_NMS_IOU_THRESHOLD 0.3
+#define DEFAULT_TOP_K -1
 
 #define CONFIG_GROUP_PROPERTY "property"
 
@@ -55,6 +56,8 @@
 #define CONFIG_GROUP_INFER_NETWORK_TYPE "network-type"
 #define CONFIG_GROUP_INFER_FORCE_IMPLICIT_BATCH_DIM "force-implicit-batch-dim"
 #define CONFIG_GROUP_INFER_INFER_DIMENSIONS "infer-dims"
+#define CONFIG_GROUP_INFER_OUTPUT_IO_FORMATS "output-io-formats"
+#define CONFIG_GROUP_INFER_LAYER_DEVICE_PRECISION "layer-device-precision"
 
 /** Preprocessing parameters. */
 #define CONFIG_GROUP_INFER_MODEL_COLOR_FORMAT "model-color-format"
@@ -68,6 +71,7 @@
 /** Custom implementation required to support a network. */
 #define CONFIG_GROUP_INFER_CUSTOM_LIB_PATH "custom-lib-path"
 #define CONFIG_GROUP_INFER_CUSTOM_PARSE_BBOX_FUNC "parse-bbox-func-name"
+#define CONFIG_GROUP_INFER_CUSTOM_PARSE_BBOX_IM_FUNC "parse-bbox-instance-mask-func-name"
 #define CONFIG_GROUP_INFER_CUSTOM_ENGINE_CREATE_FUNC "engine-create-func-name"
 #define CONFIG_GROUP_INFER_CUSTOM_PARSE_CLASSIFIER_FUNC "parse-classifier-func-name"
 #define CONFIG_GROUP_INFER_CUSTOM_NETWORK_CONFIG "custom-network-config"
@@ -78,8 +82,9 @@
 
 /** UFF model specific parameters. */
 #define CONFIG_GROUP_INFER_UFF "uff-file"
-#define CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS "uff-input-dims"
+#define CONFIG_GROUP_INFER_UFF_INPUT_ORDER "uff-input-order"
 #define CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS_LEGACY "input-dims"
+#define CONFIG_GROUP_INFER_UFF_INPUT_DIMENSIONS_LEGACY_V2 "uff-input-dims"
 #define CONFIG_GROUP_INFER_UFF_INPUT_BLOB_NAME "uff-input-blob-name"
 
 /** TLT model parameters. */
@@ -100,6 +105,9 @@
 
 /** Segmentaion specific parameters. */
 #define CONFIG_GROUP_INFER_SEGMENTATION_THRESHOLD "segmentation-threshold"
+
+/** Instance Segmentaion specific parameters. */
+#define CONFIG_GROUP_INFER_OUTPUT_INSTANCE_MASK "output-instance-mask"
 
 /** Parameters for filtering objects based min/max size threshold when
     operating in secondary mode. */
@@ -132,6 +140,7 @@
 #define CONFIG_GROUP_INFER_CLASS_ATTRS_BORDER_COLOR "border-color"
 #define CONFIG_GROUP_INFER_CLASS_ATTRS_BG_COLOR "bg-color"
 #define CONFIG_GROUP_INFER_CLASS_ATTRS_NMS_IOU_THRESHOLD "nms-iou-threshold"
+#define CONFIG_GROUP_INFER_CLASS_ATTRS_TOP_K "topk"
 
 gboolean gst_nvinfer_parse_config_file (GstNvInfer *nvinfer,
         NvDsInferContextInitParams *init_params, const gchar * cfg_file_path);
