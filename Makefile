@@ -23,8 +23,9 @@ NVDS_VERSION:=5.0
 
 CFLAGS+= -fPIC -std=c++11 -DDS_VERSION=\"5.0.0\" \
 	 -I /usr/local/cuda-$(CUDA_VER)/include \
-	 -I ../../includes \
-	 -I ../../libs/nvdsinfer -DNDEBUG
+	 -I /usr/local/cuda-10.2/targets/x86_64-linux/include \
+	 -I /opt/nvidia/deepstream/deepstream-5.0/sources/includes \
+	 -I /opt/nvidia/deepstream/deepstream-5.0/sources/libs/nvdsinfer -DNDEBUG
 
 GST_INSTALL_DIR?=/opt/nvidia/deepstream/deepstream-$(NVDS_VERSION)/lib/gst-plugins/
 LIB_INSTALL_DIR?=/opt/nvidia/deepstream/deepstream-$(NVDS_VERSION)/lib/
