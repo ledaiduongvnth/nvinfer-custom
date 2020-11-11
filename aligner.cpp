@@ -41,7 +41,6 @@ int Aligner::AlignFace(const cv::Mat & img_src,
 
 int Aligner::Impl::AlignFace(const cv::Mat & img_src,
 	const std::vector<cv::Point2f>& keypoints, cv::Mat * face_aligned) {
-	std::cout << "start align face." << std::endl;
 	if (img_src.empty()) {
 		std::cout << "input empty." << std::endl;
 		return 10001;
@@ -51,7 +50,6 @@ int Aligner::Impl::AlignFace(const cv::Mat & img_src,
 		return 10001;
 	}
 
-	printf("1\n");
 	float points_src[5][2] = {
 		{keypoints[0].x, keypoints[0].y},
 		{keypoints[1].x, keypoints[1].y},
@@ -63,7 +61,6 @@ int Aligner::Impl::AlignFace(const cv::Mat & img_src,
 //	cv::imshow("test", img_src);
 //	cv::waitKey(0);
 	cv::Mat src_mat(5, 2, CV_32FC1, points_src);
-    printf("2\n");
 
     float points_dst[5][2] = {
             { 30.2946f + 8.0f, 51.6963f },
@@ -74,7 +71,6 @@ int Aligner::Impl::AlignFace(const cv::Mat & img_src,
     };
 
     cv::Mat dst_mat(5, 2, CV_32FC1, points_dst);
-    printf("3\n");
 
 
     cv::Mat transform = SimilarTransform(src_mat, dst_mat);
@@ -82,8 +78,6 @@ int Aligner::Impl::AlignFace(const cv::Mat & img_src,
 
 	cv::Mat transfer_mat = transform(cv::Rect(0, 0, 3, 2));
 	cv::warpAffine(img_src.clone(), *face_aligned, transfer_mat, cv::Size(112, 112), 1, 0, 0);
-    printf("4\n");
-    std::cout << "end align face." << std::endl;
 	return 0;
 }
 

@@ -37,6 +37,8 @@ GST_DEBUG_CATEGORY (gst_nvinfer_debug);
 #define GST_CAT_DEFAULT gst_nvinfer_debug
 
 #define INTERNAL_BUF_POOL_SIZE 3
+#define RGB_BYTES_PER_PIXEL 3
+
 
 #define NVDSINFER_CTX_OUT_POOL_SIZE_FLOW_META 6
 
@@ -109,6 +111,13 @@ guint gst_nvinfer_signals[LAST_SIGNAL] = { 0 };
 /* Define our element type. Standard GObject/GStreamer boilerplate stuff */
 #define gst_nvinfer_parent_class parent_class
 G_DEFINE_TYPE (GstNvInfer, gst_nvinfer, GST_TYPE_BASE_TRANSFORM);
+
+#define CHECK_CUDA_STATUS(cuda_status,error_str) do { \
+  if ((cuda_status) != cudaSuccess) { \
+    g_print ("Error: %s in %s at line %d (%s)\n", \
+        error_str, __FILE__, __LINE__, cudaGetErrorName(cuda_status)); \
+  } \
+} while (0)
 
 /* Implementation of the GObject/GstBaseTransform interfaces. */
 static void gst_nvinfer_finalize (GObject * object);
@@ -779,7 +788,8 @@ gst_nvinfer_start (GstBaseTransform * btrans)
   }
 
   nvinfer->interval_counter = 0;
-
+  nvinfer->processing_height = 1080;
+  nvinfer->processing_width = 1920;
 
     if (nvinfer->inter_buf)
         NvBufSurfaceDestroy (nvinfer->inter_buf);
@@ -1674,6 +1684,7 @@ should_infer_object (GstNvInfer * nvinfer, GstBuffer * inbuf,
 
   return TRUE;
 }
+#define NVDS_USER_FRAME_META_EXAMPLE (nvds_get_user_meta_type("NVIDIA.NVINFER.USER_META"))
 
 /* Process on objects detected by upstream detectors.
  *
@@ -1852,7 +1863,31 @@ gst_nvinfer_process_objects (GstNvInfer * nvinfer, GstBuffer * inbuf,
         batch->conv_buf = conv_gst_buf;
       }
       idx = batch->frames.size ();
-
+        gdouble ratio = 1;
+        gint width = object_meta->rect_params.width;
+        gint height = object_meta->rect_params.height;
+        if (get_converted_mat (nvinfer,in_surf, idx, &object_meta->rect_params,ratio, width,height) != GST_FLOW_OK) {
+            continue;
+        }
+        NvDsUserMeta *user_meta = NULL;
+        gint16 *user_meta_data = NULL;
+        std::vector<cv::Point2f> landmarks;
+        for (NvDsMetaList *l_user_meta = frame_meta->frame_user_meta_list; l_user_meta != NULL; l_user_meta = l_user_meta->next) {
+            user_meta = (NvDsUserMeta *) (l_user_meta->data);
+            if(user_meta->base_meta.meta_type == NVDS_USER_FRAME_META_EXAMPLE)
+            {
+                user_meta_data = (gint16 *)user_meta->user_meta_data;
+                for(int i = 0; i < 5; i++) {
+                    cv::Point2f p1 = cv::Point(cv::Point((float)user_meta_data[i*2] - object_meta->rect_params.left, (float)user_meta_data[i*2+1] - object_meta->rect_params.top));
+                    landmarks.emplace_back(p1);
+                    cv::circle(*nvinfer->cvmat, cv::Point((float)user_meta_data[i*2] - object_meta->rect_params.left, (float)user_meta_data[i*2+1] - object_meta->rect_params.top), 2, cv::Scalar(255, 0, 0), 2);
+                }
+            }
+        }
+        cv::Mat faceAligned;
+        mirror::Aligner aligner;
+        aligner.AlignFace(*nvinfer->cvmat, landmarks, &faceAligned);
+        cv::imwrite("/mnt/hdd/CLionProjects/face_ds/a.png", faceAligned);
       /* Crop, scale and convert the buffer. */
       if (get_converted_buffer (nvinfer, in_surf,
               in_surf->surfaceList + frame_meta->batch_id,
