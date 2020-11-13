@@ -19,6 +19,7 @@
 
 #include <NvInfer.h>
 #include <NvInferRuntime.h>
+#include <memory>
 
 #include "nvdsinfer_backend.h"
 #include "nvdsinfer_custom_impl.h"
