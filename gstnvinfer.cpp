@@ -1173,7 +1173,7 @@ get_converted_mat (GstNvInferOnnx * nvinfer, NvBufSurface *src_surf, gint idx,
 #if (CV_MAJOR_VERSION >= 4)
     cv::cvtColor (in_mat, *nvinfer->cvmat, cv::COLOR_RGBA2BGR);
 #else
-    cv::cvtColor (in_mat, *custominfer->cvmat, CV_RGBA2BGR);
+    cv::cvtColor (in_mat, *nvinfer->cvmat, CV_RGBA2BGR);
 #endif
 
     if (NvBufSurfaceUnMap (nvinfer->inter_buf, 0, 0)){

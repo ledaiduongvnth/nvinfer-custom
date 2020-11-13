@@ -24,7 +24,8 @@ NVDS_VERSION:=5.0
 CFLAGS+= -fPIC -std=c++11 -DDS_VERSION=\"5.0.0\" \
 	 -I /usr/local/cuda-$(CUDA_VER)/include \
 	 -I ./includes \
-	 -I ./libs/nvdsinfer -DNDEBUG
+	 -I ./libs/nvdsinfer -I/usr/include/gstreamer-1.0 -I/usr/include/glib-2.0  \
+	 -I /usr/lib/x86_64-linux-gnu/glib-2.0/include -DNDEBUG
 
 GST_INSTALL_DIR?=/opt/nvidia/deepstream/deepstream-$(NVDS_VERSION)/lib/gst-plugins/
 LIB_INSTALL_DIR?=/opt/nvidia/deepstream/deepstream-$(NVDS_VERSION)/lib/
@@ -38,7 +39,7 @@ LIBS+= -L$(LIB_INSTALL_DIR) -lnvdsgst_helper -lnvdsgst_meta -lnvds_meta \
 
 OBJS:= $(SRCS:.cpp=.o)
 
-PKGS:= gstreamer-1.0 gstreamer-base-1.0 gstreamer-video-1.0 opencv4
+PKGS:= gstreamer-1.0 gstreamer-base-1.0 gstreamer-video-1.0 opencv
 CFLAGS+=$(shell pkg-config --cflags $(PKGS))
 LIBS+=$(shell pkg-config --libs $(PKGS))
 
